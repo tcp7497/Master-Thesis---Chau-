@@ -1,0 +1,252 @@
+---
+title: "MainSEIR"
+author: "Thanh Chau Pham"
+date: "2026-03-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Input parameters - fixed
+
+n<- 100 #population size
+ct.rates<-10 #avg number of daily contacts per day
+nSeeds<-20 #number of cases starting the epidemic
+R0<-3 # average number of secondary cases generated per infected individual in a fully susceptible population
+inf.param<- 10
+#pathogen<-"COVID-19" # or "FLU"
+t.stop  <- 360 # maximum number of days the simulation is running (if infected cases present)
+
+
+#Compute the reproduction number related to the selected network. 
+source("F:\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR.R")
+nSim<-100
+nSeed<-22032026
+set.seed(nSeed)
+
+baseline_results <- list() 
+group_results <- list() 
+network_results <- list()
+
+for (i in 1:nSim) {
+  print(i)
+  
+  #SCENARIO 1: Free mixing (baseline)
+  baseline_results[[i]] <- sim.epi_seir(
+    n = n, ct.rates = ct.rates, nSeeds = 1, inf.param = inf.param, t.stop = t.stop)
+  
+  # SCENARIO 2: Group-based structured mixing
+  groups <- c(rep(1, n/2), rep(2, n/2))
+  M_matrix <- matrix(c(0.9, 0.1, 0.1, 0.9), nrow = 2, byrow = TRUE)
+  group_results[[i]] <- sim.epi_seir(
+    n = n, ct.rates = ct.rates, nSeeds = 1, inf.param = inf.param, t.stop = t.stop, group_assign = groups, M = M_matrix)
+
+  # SCENARIO 3: Network-based mixing
+  network_er <- function(n, p) {
+  A <- matrix(rbinom(n*n, 1, p), nrow=n)
+  diag(A) <- 0
+  A[lower.tri(A)] <- t(A)[lower.tri(A)] # Làm cho ma trận đối xứng
+  return(A)
+  }
+  A_network <- network_er(n = n, p = 0.15)
+  network_results[[i]] <- sim.epi_seir(
+    n = n, ct.rates = ct.rates, nSeeds  =1, inf.param = inf.param, t.stop = t.stop, A = A_network)
+}
+
+```
+
+
+
+```{r}
+analyze_results_seir <- function(results_list, n, t.stop) {
+  
+  # 1. Total Attack Rate
+  # Count everyone who is NOT Susceptible (0), meaning they were E, I, or R
+  attack_rates <- sapply(results_list, function(res) {
+    sum(res$status.matrix$infected != 0) / n
+  })
+  
+  # 2. Daily Infection Incidence
+  # We track Event 0.5 (Exposed) because that is the moment of new infection
+  inc_matrix <- matrix(0, nrow = length(results_list), ncol = t.stop + 1)
+  
+  for (i in 1:length(results_list)) {
+    # Extract times where event == 0.5
+    inf_times <- results_list[[i]]$time.events[results_list[[i]]$time.events[,2] == 0.5, 1]
+    if (length(inf_times) > 0) {
+      tab <- table(factor(floor(inf_times), levels = 0:t.stop))
+      inc_matrix[i, ] <- as.numeric(tab)
+    }
+  }
+  
+  avg_daily_inc <- colMeans(inc_matrix)
+  
+  # 3. Outbreak Probability
+  # Probability that more than 10% of the population gets infected
+  outbreak_prob <- mean(attack_rates > 0.10)
+  
+  return(list(
+    attack_raw = attack_rates,
+    mean_attack = mean(attack_rates),
+    daily_inc = avg_daily_inc,
+    outbreak_prob = outbreak_prob
+  ))
+}
+
+#Print Total Attack Rate và Outbreak Outcome
+summary_baseline <- analyze_results_seir(baseline_results, n, t.stop)
+summary_group    <- analyze_results_seir(group_results, n, t.stop)
+summary_network  <- analyze_results_seir(network_results, n, t.stop)
+
+comparison_table <- data.frame(
+  Scenario = c("Free Mixing", "Two Groups", "ER Network"),
+  Avg_Attack_Rate = c(summary_baseline$mean_attack, summary_group$mean_attack, summary_network$mean_attack),
+  Outbreak_Probability = c(summary_baseline$outbreak_prob, summary_group$outbreak_prob, summary_network$outbreak_prob)
+)
+
+print(comparison_table)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+get_cum_30_days_seir <- function(results_list, n, scenario_name) {
+  t_limit <- 30
+  cum_matrix <- matrix(0, nrow = length(results_list), ncol = t_limit + 1)
+  
+  for (i in 1:length(results_list)) {
+    # Track the 0.5 event (S -> E)
+    inf_times <- results_list[[i]]$time.events[results_list[[i]]$time.events[,2] == 0.5, 1]
+    
+    if (length(inf_times) > 0) {
+      daily_counts <- table(factor(floor(inf_times), levels = 0:t_limit))
+      # Calculate cumulative proportion
+      cum_matrix[i, ] <- cumsum(as.numeric(daily_counts)) / n
+    }
+  }
+  
+  return(data.frame(
+    Day = 0:t_limit,
+    Cumulative_Rate = colMeans(cum_matrix),
+    Scenario = scenario_name
+  ))
+}
+
+
+# Trích xuất dữ liệu cho 3 nhóm
+df1 <- get_cum_30_days_seir(baseline_results, n, "Free Mixing")
+df2 <- get_cum_30_days_seir(group_results, n, "Staff-Bridge Groups")
+df3 <- get_cum_30_days_seir(network_results, n, "ER Network")
+
+plot_data_30 <- rbind(df1, df2, df3)
+
+# Vẽ biểu đồ
+ggplot(plot_data_30, aes(x = Day, y = Cumulative_Rate, color = Scenario)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) + # Thêm điểm để dễ nhìn từng ngày
+  theme_minimal() +
+  labs(
+    title = "Early Phase: Cumulative Attack Rate (First 30 Days)",
+    subtitle = "Comparison of population structures in Vaccinopolis model",
+    x = "Day",
+    y = "Cumulative Proportion Infected",
+    color = "Model Scenario"
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme(legend.position = "bottom", 
+        panel.grid.minor = element_blank())
+
+```
+
+
+```{r}
+calculate_metrics_seir <- function(results_list, n) {
+  # 1. Cumulative cases
+  cum_cases_vec <- sapply(results_list, function(res) sum(res$status.matrix$infected != 0))
+  
+  # 2. Daily generated cases (Tránh lỗi NaN)
+  daily_gen_vec <- sapply(results_list, function(res) {
+    # Đếm sự kiện 0.5 (Exposed)
+    inf_events <- sum(res$time.events[,2] == 0.5)
+    max_t <- max(res$time.events[,1])
+    if (length(max_t) > 0 && max_t > 0) {
+      return(inf_events / max_t)
+    } else {
+      return(0)
+    }
+  })
+  
+  # 3. Transmission ratio
+  trans_ratio_vec <- sapply(results_list, function(res) {
+    total_inf <- sum(res$status.matrix$infected != 0)
+    seeds <- sum(res$status.matrix$time.of.infection == 0, na.rm = TRUE)
+    if (total_inf > seeds) return((total_inf - seeds) / total_inf) else return(0)
+  })
+  
+  return(c(
+    Avg_Daily_Cases = round(mean(daily_gen_vec), 2),
+    Cumulative_Cases = round(mean(cum_cases_vec), 0),
+    Cumulative_Perc = paste0(round((mean(cum_cases_vec)/n)*100, 1), "%"),
+    Transmission_Ratio = round(mean(trans_ratio_vec), 2)
+  ))
+}
+
+# Tính toán cho từng Scenario
+scn1_metrics <- calculate_metrics_seir(baseline_results, n, nSim)
+scn2_metrics <- calculate_metrics_seir(group_results, n, nSim)
+scn3_metrics <- calculate_metrics_seir(network_results, n, nSim)
+
+# Tạo bảng tổng hợp (Transpose để giống mẫu của bạn)
+summary_table_final <- data.frame(
+  Metric = c("Average daily generated cases", "Cumulative cases", 
+             "Cumulative cases percentage", "Transmission ratio"),
+  Scn.1 = scn1_metrics,
+  Scn.2 = scn2_metrics,
+  Scn.3 = scn3_metrics,
+  row.names = NULL
+)
+
+# Tính % thay đổi so với Scn.1 cho chỉ số Daily Cases (giống trong ngoặc đơn mẫu)
+calc_change <- function(val, ref) {
+  change <- ((as.numeric(val) - as.numeric(ref)) / as.numeric(ref)) * 100
+  return(paste0(val, " (", round(change, 0), "%)"))
+}
+
+summary_table_final[1, "Scn.2"] <- calc_change(scn2_metrics[1], scn1_metrics[1])
+summary_table_final[1, "Scn.3"] <- calc_change(scn3_metrics[1], scn1_metrics[1])
+
+# Hiển thị bảng
+print(summary_table_final)
+```
+
+
+
+```{r}
+
+```
+
+
+
+```{r}
+
+```
+
+
+
+```{r}
+
+```
+
+

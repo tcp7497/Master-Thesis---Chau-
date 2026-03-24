@@ -15,7 +15,6 @@ infection.period.length <- function(mean_ip = 6, sd_ip = 2){
 # Gamma infectiousness profile (PDF)
 infectiousness.measure <- function(t, mean = 4.5, sd = 2.0){
   if (t < 0) return(0)
-  
   shape <- (mean / sd)^2
   scale <- (sd^2) / mean
   
@@ -28,10 +27,9 @@ infectiousness.measure <- function(t, mean = 4.5, sd = 2.0){
 # Population Matrix
 # ------------------------------------------------------------------------
 pop.matrix <- function(n, group_assign = NULL){
-  if (is.null(group_assign)) {
-    # default: 2 groups, split roughly half-half
-    group_assign <- rep(1:2, length.out = n)
-  }
+  if (is.null(group_assign)) 
+    group_assign <- rep(1:n, length.out = n) #default: 1 group
+
   
   status.matrix <- data.frame(
     infected          = rep(0, n), # 1-infecte, 0-suceptible, -1 recovered
@@ -59,13 +57,9 @@ choose_infectee_structured <- function(n, infector, groups, M){
   candidates <- which(groups == g_target & seq_len(n) != infector)
   
   # fallback if group has only infector (rare edge case)
-  if (length(candidates) == 0) {
-    candidates <- setdiff(seq_len(n), infector)
+  if (length(candidates) == 0) candidates <- setdiff(seq_len(n), infector)
+  if (length(candidates) > 1) sample(candidates, size = 1) else candidates
   }
-  
-  sample(candidates, size = 1)
-}
-
 
 
 # ------------------------------------------------------------------------
@@ -75,9 +69,7 @@ sim.epi <- function(n, ct.rates, nSeeds, inf.param, pathogen = NULL, t.stop,
                     k = 0.2,  # heterogeneity: Var(z)=1/k
                     nu_mean = 4.5, nu_sd = 2.0,
                     mean_ip = 6, sd_ip = 2,
-                    group_assign = NULL,
-                    M = matrix(c(0.9, 0.1,
-                                 0.1, 0.9), nrow = 2, byrow = TRUE)){
+                    group_assign = NULL, M = NULL){
   
   # create a matrix in which epidemiological states and other infection
   # details are reported
@@ -97,7 +89,7 @@ sim.epi <- function(n, ct.rates, nSeeds, inf.param, pathogen = NULL, t.stop,
   event_counter <- 0
   
   infectives <- rep(0, n) 
-  current.time <- 1
+  current.time <- 0
   
   # Vector storing the next proposed contact time for every individual
   contact.times <- rep(Inf, n)
@@ -124,14 +116,12 @@ sim.epi <- function(n, ct.rates, nSeeds, inf.param, pathogen = NULL, t.stop,
     
     # Identify next event times
     # events occur in continuous time - selecting and resolving the ones that occur sooner 
-    
-    
     # Only look at active infectives to speed up min()
     active_ids <- which(infectives == 1)
     if(length(active_ids) == 0) break
     
-    min_ctc_time <- min(contact.times[active_ids])
-    min_rec_time <- min(status.matrix$Recovery[active_ids])
+    min_ctc_time <- min(contact.times[active_ids]) # The earliest time infected made contact
+    min_rec_time <- min(status.matrix$Recovery[active_ids]) #The earliest time infected has recovered from the illness
     
     if (min_ctc_time < min_rec_time) {
       
@@ -142,16 +132,18 @@ sim.epi <- function(n, ct.rates, nSeeds, inf.param, pathogen = NULL, t.stop,
       candidates <- active_ids[contact.times[active_ids] == min_ctc_time]
       infector <- if(length(candidates) > 1) sample(candidates, 1) else candidates
       
+      # Choose a new contact person based on scenarios
+      if (!is.null(group_assign) && !is.null(M)) {
+        
+        # SCENARIO 2: Staff-Bridge & SCENARIO 3: Strict-Cohorting
+        infectee <- choose_infectee_structured(n, infector, group_assign, M)
+      } else {
+        # SCENARIO 1: Free mixing
+        infectee <- sample(setdiff(1:n, infector), 1)
+      }
+      
       # Schedule next contact for this infector
       contact.times[infector] <- current.time + rexp(1, status.matrix$ct.rates[infector])
-      
-      # Structured mixing
-      infectee <- choose_infectee_structured(
-        n = n,
-        infector = infector,
-        groups = status.matrix$group,
-        M = M
-      )
       
       # Check if the contacted person is susceptible
       if (status.matrix$infected[infectee] == 0) {

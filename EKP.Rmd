@@ -19,65 +19,372 @@ When you click the **Knit** button a document will be generated that includes bo
 
 
 ```{r}
-#Input parameters - fixed
+# Input parameters - fixed
 
-n<- 24 #population size
-ct.rates<-2 #avg number of daily contacts per day
-nSeeds<-1 #number of cases starting the epidemic
+n<- 24 # population size
+ct.rates<-2 # avg number of daily contacts per day
+nSeeds<-1 # number of cases starting the epidemic
 R0<-1.5 # average number of secondary cases generated per infected individual in a fully susceptible population
 inf.param<- R0/(ct.rates)
-#pathogen<-"COVID-19" # or "FLU"
+# pathogen<-"COVID-19" # or "FLU"
 t.stop  <- 360 # maximum number of days the simulation is running (if infected cases present)
 
 
-#Compute the reproduction number related to the selected network. 
+# Compute the reproduction number related to the selected network. 
 source("F:\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\EKPmodify_group.R")
 nSim<-100
-epi.outbreak<-list()
-nSeed<-1062021
+nSeed<-22032026
 set.seed(nSeed)
 
+baseline_results <- list() 
+group_results <- list() 
+strict_results <- list()
 
-for (i in 1:nSim){
+for (i in 1:nSim) {
   print(i)
-  group_assign <- c(rep(1, 12), rep(2, 12))  # group 1, group 2
-
-  M <- matrix(c(0.9, 0.1,
-                0.1, 0.9), nrow = 2, byrow = TRUE)
   
-  epi.outbreak[[i]] <- sim.epi(
-  n = n,
-  ct.rates = 2,
-  nSeeds = 1,
-  inf.param = inf.param,
-  t.stop = t.stop,
-  k = 0.2,
-  nu_mean = 4.5,
-  nu_sd = 2.0,
-  mean_ip = 6,
-  sd_ip = 2,
-  group_assign = group_assign,
-  M = M
-)
+  # SCENARIO 1: Free mixing (baseline)
+  baseline_results[[i]] <- sim.epi(
+    n = n, ct.rates = ct.rates, nSeeds = 1, inf.param = inf.param, t.stop = t.stop)
+  
+  # SCENARIO 2: Staff-Bridge - Volunteers in rooms + Staff moving between
+  # IDs 1-10: Volunteers Group A | IDs 11-20: Volunteers Group B | IDs 21-24: Staff
+  volunteers_a <- 10
+  volunteers_b <- 10
+  staff  <- 4
+  
+  scenario2 <- c(rep(1, volunteers_a), rep(2, volunteers_b), rep(3, staff))
+  
+  # Mixing Matrix (M) for 3 groups:
+  # Rows = Infector Group, Cols = Potential Infectee Group
+  # Probabilities should represent the likelihood of contact
+  M_matrix <- matrix(c(
+    0.90, 0.00, 0.10,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff (10%)
+    0.00, 0.90, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff (10%)
+    0.40, 0.40, 0.20   # Group 3 (Staff) visits A (40%), B (40%), and other Staff (20%)
+  ), nrow = 3, byrow = TRUE)
+  
+  seed_id <- sample(1:10, 1)
+
+  group_results[[i]] <- sim.epi(
+    n = n, ct.rates = ct.rates, 
+    nSeeds = 1, # Assume Infector is located in Volunteers A (ID 1-10)
+    inf.param = inf.param, t.stop = t.stop, 
+    group_assign = scenario2, M = M_matrix)
+
+  # SCENARIO 3: Strict Cohorting - Staff A for Group A, Staff B for Group B
+  # n=24: 10 Volunteers A, 10 Volunteers B, 2 Staff A, 2 Staff B
+  volunteers_room <- 10
+  staff_room <- 2
+  
+  # Group 1: Volunteers A | Group 2: Volunteers B | Group 3: Staff A | Group 4: Staff B
+  scenario3 <- c(rep(1, volunteers_room), rep(2, volunteers_room), 
+                     rep(3, staff_room), rep(4, staff_room))
+  
+  # Matrix M for 4 groups: Staff A (Group 3) only meets Volunteers A (Group 1). Staff B (Group 4) only meets Volunteers B (Group 2).
+  # There is no overlap between Group (1,3) and Group (2,4).
+  M_strict <- matrix(c(
+    0.90, 0.00, 0.10, 0.00,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff A (10%)
+    0.00, 0.90, 0.00, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff B (10%)
+    0.50, 0.00, 0.50, 0.00,  # Group 3 (Staff A) visits A (50%), and other Staff A (50%)
+    0.00, 0.50, 0.00, 0.50   # Group 3 (Staff B) visits B (50%), and other Staff B (50%)
+  ), nrow = 4, byrow = TRUE)
+
+  strict_results[[i]] <- sim.epi(
+    n = n, ct.rates = ct.rates, 
+    nSeeds = 1, # Assume Infector is located in Volunteers A (ID 1-10)
+    inf.param = inf.param, t.stop = t.stop, 
+    group_assign = scenario3, M = M_strict)
 }
 
-# Plotting a few summary measures
-library(ggplot2)
-library(tidyr)
-library(patchwork)
-library(dplyr)
+
 ```
+
+
+
+```{r}
+
+analyze_results_sir <- function(results_list, n, t.stop) {
+  
+  # 1. Total Attack Rate
+  # Count everyone who is NOT Susceptible (0), 
+  # meaning they are either Infected (1) or Recovered (-1)
+  attack_rates <- sapply(results_list, function(res) {
+    if (is.null(res$status.matrix)) return(0)
+    sum(res$status.matrix$infected != 0) / n
+  })
+  
+  # 2. Daily Infection Incidence
+  # In your SIR code, Event '1' represents the moment of infection
+  inc_matrix <- matrix(0, nrow = length(results_list), ncol = t.stop + 1)
+  
+  for (i in 1:length(results_list)) {
+    time_events <- results_list[[i]]$time.events
+    
+    # Check if any infection events occurred
+    if (!is.null(time_events) && nrow(time_events) > 0) {
+      # Filter for event type 1 (Infection)
+      inf_times <- time_events[time_events[, 2] == 1, 1]
+      
+      if (length(inf_times) > 0) {
+        # Group by floor of time to get daily counts
+        tab <- table(factor(floor(inf_times), levels = 0:t.stop))
+        inc_matrix[i, ] <- as.numeric(tab)
+      }
+    }
+  }
+  
+  avg_daily_inc <- colMeans(inc_matrix)
+  
+  # 3. Outbreak Probability
+  # Probability that more than 10% of the population gets infected
+  outbreak_prob <- mean(attack_rates > 0.10)
+  
+  return(list(
+    attack_raw = attack_rates,
+    mean_attack = mean(attack_rates),
+    daily_inc = avg_daily_inc,
+    outbreak_prob = outbreak_prob
+  ))
+}
+
+# Run the analysis for each scenario
+# Make sure your simulation lists (baseline_results, etc.) are already populated
+summary_baseline <- analyze_results_sir(baseline_results, n, t.stop)
+summary_group    <- analyze_results_sir(group_results, n, t.stop)
+summary_strict  <- analyze_results_sir(strict_results, n, t.stop)
+
+# Create the summary comparison table
+comparison_table <- data.frame(
+  Scenario = c("Free Mixing", "Staff-Bridge", "Strict-Cohorting"),
+  Avg_Attack_Rate = c(
+    summary_baseline$mean_attack, 
+    summary_group$mean_attack, 
+    summary_strict$mean_attack
+  ),
+  Outbreak_Probability = c(
+    summary_baseline$outbreak_prob, 
+    summary_group$outbreak_prob, 
+    summary_strict$outbreak_prob
+  )
+)
+
+print(comparison_table)
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Updated function for SIR logic
+get_cum_30_days_sir <- function(results_list, n, scenario_name) {
+  t_limit <- 30
+  # Initialize matrix to store cumulative counts for each simulation
+  cum_matrix <- matrix(0, nrow = length(results_list), ncol = t_limit + 1)
+  
+  for (i in 1:length(results_list)) {
+    time_events <- results_list[[i]]$time.events
+    
+    if (!is.null(time_events) && nrow(time_events) > 0) {
+      # Filter rows where event code is 1
+      inf_times <- time_events[time_events[, 2] == 1, 1]
+      
+      if (length(inf_times) > 0) {
+        # Tabulate infections occurring each day from 0 to 30
+        daily_counts <- table(factor(floor(inf_times), levels = 0:t_limit))
+        
+        # Calculate cumulative proportion of the population infected
+        # We add the initial seeds (nSeeds) if they aren't captured as events at t=0
+        cum_matrix[i, ] <- cumsum(as.numeric(daily_counts)) / n
+      }
+    }
+  }
+  
+  # Return summarized data frame with the mean across all simulations
+  return(data.frame(
+    Day = 0:t_limit,
+    Cumulative_Rate = colMeans(cum_matrix),
+    Scenario = scenario_name
+  ))
+}
+
+# Extract and process data for the 3 scenarios
+df1 <- get_cum_30_days_sir(baseline_results, n, "Free Mixing")
+df2 <- get_cum_30_days_sir(group_results, n, "Staff-Bridge")
+df3 <- get_cum_30_days_sir(strict_results, n, "Strict-Cohorting")
+
+# Combine datasets
+plot_data_30 <- rbind(df1, df2, df3)
+
+# Create the Visualization
+ggplot(plot_data_30, aes(x = Day, y = Cumulative_Rate, color = Scenario)) +
+  geom_line(linewidth = 1.2) + # 'size' is deprecated in newer ggplot2, use 'linewidth'
+  geom_point(size = 2) + 
+  theme_minimal() +
+  labs(
+    title = "Early Phase: Cumulative Attack Rate (First 30 Days)",
+    subtitle = "SIR Model Comparison: Impact of Population Structure",
+    x = "Day",
+    y = "Cumulative Proportion Infected (%)",
+    color = "Model Scenarios"
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  theme(
+    legend.position = "bottom", 
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+
+```
+
+
+
+
+```{r}
+calculate_metrics_sir <- function(results_list, n) {
+  
+  # Cumulative cases (Anyone who was infected (1) or recovered (-1))
+  cum_cases_vec <- sapply(results_list, function(res) {
+    if (is.null(res$status.matrix)) return(0)
+    sum(res$status.matrix$infected != 0)
+  })
+  
+  # Daily generated cases (Average cases per unit of time)
+  daily_gen_vec <- sapply(results_list, function(res) {
+    # CHANGE: Count event type 1 (Infection) instead of 0.5
+    inf_events <- sum(res$time.events[,2] == 1)
+    
+    # Calculate duration of the outbreak
+    max_t <- if(nrow(res$time.events) > 0) max(res$time.events[,1]) else 0
+    
+    if (max_t > 0) {
+      return(inf_events / max_t)
+    } else {
+      return(0)
+    }
+  })
+  
+  # Transmission ratio (Proportion of total cases that were NOT seeds)
+  trans_ratio_vec <- sapply(results_list, function(res) {
+    total_inf <- sum(res$status.matrix$infected != 0)
+    # Seeds are those whose infection time is exactly 0
+    seeds <- sum(res$status.matrix$time.of.infection == 0, na.rm = TRUE)
+    
+    if (total_inf > seeds) {
+      return((total_inf - seeds) / total_inf) 
+    } else {
+      return(0)
+    }
+  })
+  
+  # Return summarized results as a named character vector
+  return(c(
+    Avg_Daily_Cases = round(mean(daily_gen_vec), 2),
+    Cumulative_Cases = round(mean(cum_cases_vec), 0),
+    Cumulative_Perc = paste0(round((mean(cum_cases_vec)/n)*100, 1), "%"),
+    Transmission_Ratio = round(mean(trans_ratio_vec), 2)
+  ))
+}
+
+# Calculate for each Scenario
+scn1_metrics <- calculate_metrics_sir(baseline_results, n)
+scn2_metrics <- calculate_metrics_sir(group_results, n)
+scn3_metrics <- calculate_metrics_sir(strict_results, n)
+
+# Create the summary table structure
+summary_table_final <- data.frame(
+  Metric = c("Average daily generated cases", 
+             "Cumulative cases", 
+             "Cumulative cases percentage", 
+             "Transmission ratio"),
+  Scn.1 = scn1_metrics,
+  Scn.2 = scn2_metrics,
+  Scn.3 = scn3_metrics,
+  stringsAsFactors = FALSE
+)
+
+# Helper to calculate percentage change compared to Scn.1 (Baseline)
+calc_change <- function(val_str, ref_str) {
+  val <- as.numeric(gsub("[^0-9.]", "", val_str)) # Remove % or other chars if any
+  ref <- as.numeric(gsub("[^0-9.]", "", ref_str))
+  
+  if (ref == 0) return(paste0(val_str, " (N/A)"))
+  
+  change <- ((val - ref) / ref) * 100
+  sign <- if(change > 0) "+" else ""
+  return(paste0(val_str, " (", sign, round(change, 0), "%)"))
+}
+
+# Apply change calculations for the first row (Daily Cases)
+summary_table_final[1, "Scn.2"] <- calc_change(scn2_metrics[1], scn1_metrics[1])
+summary_table_final[1, "Scn.3"] <- calc_change(scn3_metrics[1], scn1_metrics[1])
+
+# Display the results
+print(summary_table_final)
+
+```
+
+
+
+```{r}
+
+# First simulation
+View(baseline_results[[1]]$time.events)
+View(baseline_results[[1]]$status.matrix)
+
+```
+
+
+```{r}
+# Find the index of the worst simulation
+find_worst_sim <- function(results_list) {
+
+# Count the number of infected people (status != 0) for each simulation
+inf_counts <- sapply(results_list, function(res) {
+sum(res$status.matrix$infected != 0)
+})
+
+# Find the location (index) with the highest number of infections
+max_idx <- which.max(inf_counts)
+max_val <- inf_counts[max_idx]
+return(list(index = max_idx, count = max_val))
+}
+
+# 3 worst scenarios
+worst_baseline <- find_worst_sim(baseline_results)
+worst_group <- find_worst_sim(group_results)
+worst_strict <- find_worst_sim(strict_results)
+
+# Print results
+cat("Free Mixing Scenario: Simulation number", worst_baseline$index, "has", worst_baseline$count, "cases.\n")
+cat("Staff-Bridge Scenario: Simulation number", worst_group$index, "has", worst_group$count, "cases.\n")
+cat("Strict-Cohorting Scenario: Simulation number", worst_strict$index, "has", worst_strict$count, "cases.\n")
+
+# View of the Staff-Bridge scenario table in worst simulation
+View(group_results[[worst_baseline$index]]$status.matrix)
+View(group_results[[worst_group$index]]$status.matrix)
+View(group_results[[worst_strict$index]]$status.matrix)
+```
+
 
 
 ```{r}
 # ------------------------------------------------------------------------
 # Plot of the incidence over time for one specific simulation
 # ------------------------------------------------------------------------
+# Plotting a few summary measures
+library(ggplot2)
+library(tidyr)
+library(patchwork)
+library(dplyr)
 
-total_cases <- sapply(epi.outbreak, function(x) sum(x$status.matrix$infected != 0))
+total_cases <- sapply(group_results, function(x) sum(x$status.matrix$infected != 0))
 w <- which.max(total_cases)
 
-plot_data <- epi.outbreak[[w]]$sim.info
+plot_data <- group_results[[w]]$sim.info
 ggplot(plot_data, aes(x = day, y = dailyInc)) +
   geom_line(color = "firebrick", size = 1) +
   geom_area(fill = "firebrick", alpha = 0.2) +
@@ -262,7 +569,7 @@ plot_transmission_network(plot_data)
 #Input parameters - fixed
 
 n<- 24 #population size
-ct.rates<-2 #avg number of daily contacts per day
+ct.rates<-5 #avg number of daily contacts per day
 nSeeds<-1 #number of cases starting the epidemic
 R0<-1.5 # average number of secondary cases generated per infected individual in a fully susceptible population
 inf.param<- R0/(ct.rates)
