@@ -20,6 +20,10 @@ infectiousness.measure <- function(t, mean_i = 10.0, sd_i = 3.8){
   return(dgamma(t, shape = shape_i, scale = scale_i))
 }
 
+# multipliers based on behavior
+mod_staff <- c("morning"=1.5, "lunch"=1.0, "afternoon"=1.5, "dinner"=1.0, "evening"=0.8, "night"=0.6)
+mod_vol   <- c("morning"=1.2, "lunch"=2.0, "afternoon"=1.0, "dinner"=1.8, "evening"=1.5, "night"=0.5)
+
 # time blocks
 get_dynamic_rate <- function(role_single, current_time, base_ct_rate) {
   # Convert days to hours (0 to 24)
@@ -32,14 +36,22 @@ get_dynamic_rate <- function(role_single, current_time, base_ct_rate) {
   else if (hr >= 20 && hr < 22) block <- "evening"
   else block <- "night"
   
-  # Multipliers based on behavior
-  mod_staff <- c("morning"=1.5, "lunch"=1.0, "afternoon"=1.2, "dinner"=1.0, "evening"=0.8, "night"=0.3)
-  mod_vol   <- c("morning"=0.8, "lunch"=2.0, "afternoon"=1.0, "dinner"=1.8, "evening"=1.5, "night"=0.2)
-  
   mod <- if(role_single == "staff") mod_staff[block] else mod_vol[block]
   return(base_ct_rate * as.numeric(mod))
 }
 
+# weighted mean of time blocks
+block_hours <- c("morning" = 5, "lunch" = 2, "afternoon" = 5, 
+                 "dinner" = 2, "evening" = 2, "night" = 8)
+
+weighted_mean_mult <- function(mod_vec) {
+  sum(mod_vec * block_hours[names(mod_vec)]) / 24
+}
+
+avg_mod_staff <- weighted_mean_mult(mod_staff)
+avg_mod_vol   <- weighted_mean_mult(mod_vol)
+
+average_mod <- (avg_mod_staff * 4 + avg_mod_vol * 24) / 28
 
 # ------------------------------------------------------------------------
 # Population Matrix
@@ -82,7 +94,7 @@ choose_infectee_structured <- function(n, infector, groups, M){
 # ------------------------------------------------------------------------
 # Main Simulation
 # ------------------------------------------------------------------------
-sim.epi_seir <- function(n, ct.rates, nSeeds, R0, t.stop, roles,
+sim.epi_seir <- function(n, ct.rates, nSeeds, R0, t.stop, roles, average_mod,
                          k = 0.2,     # heterogeneity in infectiousness
                          k_ct = 1.0,  # heterogeneity in contact rates
                          k_sus = 1.0, # heterogeneity in susceptibility
@@ -105,7 +117,7 @@ sim.epi_seir <- function(n, ct.rates, nSeeds, R0, t.stop, roles,
   status.matrix$ct.rates <- rgamma(n, shape = k_ct, scale = ct.rates / k_ct)
   
   # calculate infection parameter based on average population contacts
-  inf.param <- R0 / (mean(status.matrix$ct.rates) * mean_i)
+  inf.param <- R0 / (mean(status.matrix$ct.rates) * average_mod)
   
   # time when symptoms/infectiousness starts
   status.matrix$onset_time <- NA 
@@ -202,6 +214,7 @@ sim.epi_seir <- function(n, ct.rates, nSeeds, R0, t.stop, roles,
           status.matrix$time.of.infection[infectee] <- current.time
           status.matrix$onset_time[infectee] <- current.time + incubation.period(mean_e, sd_e)
           status.matrix$Recovery[infectee] <- status.matrix$onset_time[infectee] + 18
+          status.matrix$infector[infectee] <- infector
           
           event_counter <- event_counter + 1
           time.events[event_counter, ] <- c(current.time, 0.5, infectee)
@@ -233,45 +246,45 @@ sim.epi_seir <- function(n, ct.rates, nSeeds, R0, t.stop, roles,
   # ------------------------------------------------------------------------
   # Summary Calculation
   # ------------------------------------------------------------------------
- 
-   if(event_counter > 0){
-  # Create daily counts
-  all_days <- floor(time.events[,1] + 0.001)
-  max_day <- floor(max(time.events[,1])) + 1
   
-  inf_events <- time.events[time.events[,2] == 1, 1]
-  rec_events <- time.events[time.events[,2] == -1, 1]
-  
-  day_counts_inf <- table(factor(floor(inf_events + 0.001), levels = 1:max_day))
-  day_counts_rec <- table(factor(floor(rec_events + 0.001), levels = 1:max_day))
-  
-  daily_inc <- as.numeric(day_counts_inf)
-  daily_prev <- (cumsum(daily_inc)+nSeeds) - cumsum(as.numeric(day_counts_rec))
-  
-  sim.info <- data.frame(
-    day = 1:max_day,
-    dailyInc = daily_inc,
-    dailyPrev = daily_prev
-  )
-  
-  # Weekly Aggregation
-  sim.info$week <- ceiling(sim.info$day / 7)
-  sim.info$weeklyInc <- ave(sim.info$dailyInc, sim.info$week, FUN=sum)
-  
-  # Get weekly prevalence (taking the prevalence at the end of the week)
-  last_val <- function(x) tail(x, 1)
-  weekly_prev_vec <- tapply(sim.info$dailyPrev, sim.info$week, last_val)
-  sim.info$weeklyPrev <- weekly_prev_vec[sim.info$week]
-  
+  if(event_counter > 0){
+    # Create daily counts
+    all_days <- floor(time.events[,1] + 0.001)
+    max_day <- floor(max(time.events[,1])) + 1
+    
+    inf_events <- time.events[time.events[,2] == 1, 1]
+    rec_events <- time.events[time.events[,2] == -1, 1]
+    
+    day_counts_inf <- table(factor(floor(inf_events + 0.001), levels = 1:max_day))
+    day_counts_rec <- table(factor(floor(rec_events + 0.001), levels = 1:max_day))
+    
+    daily_inc <- as.numeric(day_counts_inf)
+    daily_prev <- cumsum(daily_inc) - cumsum(as.numeric(day_counts_rec))
+    
+    sim.info <- data.frame(
+      day = 1:max_day,
+      dailyInc = daily_inc,
+      dailyPrev = daily_prev
+    )
+    
+    # Weekly Aggregation
+    sim.info$week <- ceiling(sim.info$day / 7)
+    sim.info$weeklyInc <- ave(sim.info$dailyInc, sim.info$week, FUN=sum)
+    
+    # Get weekly prevalence (taking the prevalence at the end of the week)
+    last_val <- function(x) tail(x, 1)
+    weekly_prev_vec <- tapply(sim.info$dailyPrev, sim.info$week, last_val)
+    sim.info$weeklyPrev <- weekly_prev_vec[sim.info$week]
+    
   } else {
-  # No events occurred
-  sim.info <- data.frame(
-    day = 1,
-    dailyInc = 0,
-    dailyPrev = nSeeds,
-    week = 1,
-    weeklyInc = 0,
-    weeklyPrev = nSeeds)
+    # No events occurred
+    sim.info <- data.frame(
+      day = 1,
+      dailyInc = 0,
+      dailyPrev = nSeeds,
+      week = 1,
+      weeklyInc = 0,
+      weeklyPrev = nSeeds)
   }
   return(list(time.events=time.events, status.matrix=status.matrix, sim.info=sim.info))
 }

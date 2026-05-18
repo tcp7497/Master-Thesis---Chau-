@@ -18,28 +18,29 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r}
+# WITH TIME BLOCKS
 # Input parameters - fixed
-
 n<- 28 # population size
 ct.rates<-3 # avg number of daily contacts per day
 nSeeds<-1 # number of cases starting the epidemic
-R0<-2 # average number of secondary cases generated per infected individual in a fully susceptible population
+R0<-1.5 # average number of secondary cases generated per infected individual in a fully susceptible population
 t.stop  <- 360 # maximum number of days the simulation is running (if infected cases present)
 
 # Compute the reproduction number related to the selected network. 
-source("F:\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR_contact-rates.R")
+source("C:\\Users\\Chau\\Downloads\\F\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR_contact-rates.R")
 nSim<-1000
 nSeed<-01042026
 set.seed(nSeed)
 
 # Define roles for all individuals 
-roles_baseline <- rep("volunteer", n)
+roles_baseline <- rep("vol", n)
 roles <- c(rep("vol", 24), rep("staff", 4))  
 
 # Initialize result storage
 baseline_results <- list() 
 group_results <- list() 
 strict_results <- list()
+common_results <- list()
 
 for (i in 1:nSim) {
   if (i %% 100 == 0) {
@@ -47,8 +48,8 @@ for (i in 1:nSim) {
   
   # SCENARIO 1: Free mixing (baseline)
   baseline_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, nSeeds = nSeeds,  
-    R0 = R0, t.stop = t.stop, roles = roles_baseline)
+    n = n, ct.rates = ct.rates, nSeeds = nSeeds, R0 = R0,
+    t.stop = t.stop, roles = roles_baseline, average_mod = average_mod)
   
   # SCENARIO 2: Staff-Bridge - Volunteers in rooms + Staff moving between
   # IDs 1-12: Volunteers Group A | IDs 13-24: Volunteers Group B | IDs 25-28: Staff
@@ -61,7 +62,7 @@ for (i in 1:nSim) {
   # Mixing Matrix (M) for 3 groups:
   # Rows = Infector Group, Cols = Potential Infectee Group
   # Probabilities should represent the likelihood of contact
-  M_matrix <- matrix(c(
+  M_bridge <- matrix(c(
     0.90, 0.00, 0.10,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff (10%)
     0.00, 0.90, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff (10%)
     0.40, 0.40, 0.20   # Group 3 (Staff) visits A (40%), B (40%), and other Staff (20%)
@@ -69,8 +70,8 @@ for (i in 1:nSim) {
 
   group_results[[i]] <- sim.epi_seir(
     n = n, ct.rates = ct.rates, nSeeds = nSeeds, 
-    R0 = R0, t.stop = t.stop, roles = roles,
-    group_assign = scenario2, M = M_matrix)
+    R0 = R0, t.stop = t.stop, roles = roles, average_mod = average_mod,
+    group_assign = scenario2, M = M_bridge)
 
   # SCENARIO 3: Strict Cohorting - Staff A for Group A, Staff B for Group B
   # n=28: 12 Volunteers A, 12 Volunteers B, 2 Staff A, 2 Staff B
@@ -78,8 +79,7 @@ for (i in 1:nSim) {
   staff_room <- 2
   
   # Group 1: Volunteers A | Group 2: Volunteers B | Group 3: Staff A | Group 4: Staff B
-  scenario3 <- c(rep(1, volunteers_room), rep(2, volunteers_room), 
-                     rep(3, staff_room), rep(4, staff_room))
+  scenario3 <- c(rep(1, volunteers_room), rep(2, volunteers_room), rep(3, staff_room), rep(4, staff_room))
   
   # Matrix M for 4 groups: Staff A (Group 3) only meets Volunteers A (Group 1). Staff B (Group 4) only meets Volunteers B (Group 2).
   # There is no overlap between Group (1,3) and Group (2,4).
@@ -87,14 +87,32 @@ for (i in 1:nSim) {
     0.90, 0.00, 0.10, 0.00,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff A (10%)
     0.00, 0.90, 0.00, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff B (10%)
     0.50, 0.00, 0.50, 0.00,  # Group 3 (Staff A) visits A (50%), and other Staff A (50%)
-    0.00, 0.50, 0.00, 0.50   # Group 3 (Staff B) visits B (50%), and other Staff B (50%)
+    0.00, 0.50, 0.00, 0.50   # Group 4 (Staff B) visits B (50%), and other Staff B (50%)
   ), nrow = 4, byrow = TRUE)
 
   strict_results[[i]] <- sim.epi_seir(
     n = n, ct.rates = ct.rates, nSeeds = nSeeds,
-    R0 = R0, t.stop = t.stop, roles = roles, 
+    R0 = R0, t.stop = t.stop, roles = roles, average_mod = average_mod, 
     group_assign = scenario3, M = M_strict)
+  
+  # SCENARIO 4: Cohorting with Common Staff Room - Staff A for Group A, Staff B for Group B, 2 Staff groups meet each other at common room after work
+  
+  # Group 1: Volunteers A | Group 2: Volunteers B | Group 3: Staff A | Group 4: Staff B
+  scenario4 <- c(rep(1, volunteers_room), rep(2, volunteers_room), rep(3, staff_room), rep(4, staff_room))
+  # Matrix M for 4 groups: Staff A (Group 3) only meets Volunteers A (Group 1). Staff B (Group 4) only meets Volunteers B (Group 2). 2 Staff groups meet each other at common room after work
+  M_common <- matrix(c(
+    0.90, 0.00, 0.10, 0.00,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff A (10%)
+    0.00, 0.90, 0.00, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff B (10%)
+    0.45, 0.00, 0.45, 0.10,  # Group 3 (Staff A) visits Vol A (45%), Staff A (45%), Staff B (10%)
+    0.00, 0.45, 0.10, 0.45   # Group 4 (Staff B) visits B (50%), Staff B (45%), Staff A (10%)
+  ), nrow = 4, byrow = TRUE)
+
+  common_results[[i]] <- sim.epi_seir(
+    n = n, ct.rates = ct.rates, nSeeds = nSeeds,
+    R0 = R0, t.stop = t.stop, roles = roles, average_mod = average_mod, 
+    group_assign = scenario4, M = M_common)
 }
+
 
 
 
@@ -103,7 +121,7 @@ for (i in 1:nSim) {
 
 ```{r}
 # ------------------------------------------------------------------------
-# Plot of the incidence over time for 3 scenarios
+# Plot of the incidence over time for 4 scenarios
 # ------------------------------------------------------------------------
 # Plotting a few summary measures
 library(ggplot2)
@@ -111,6 +129,7 @@ library(tidyr)
 library(patchwork)
 library(dplyr)
 
+# Scenario 1: Free mixing
 total_cases <- sapply(baseline_results, function(x) sum(x$status.matrix$infected != 0))
 w <- which.max(total_cases)
 
@@ -118,11 +137,13 @@ plot_data <- baseline_results[[w]]$sim.info
 ggplot(plot_data, aes(x = day, y = dailyInc)) +
   geom_line(color = "firebrick", size = 1) +
   geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in Free Mixing network",
+  labs(title = "Daily Infection Incidence in Scenario 1",
        x = "Day", y = "New Cases") +
   theme_minimal()
 
+ggsave("Incidence_Scenario_1.png", width = 8, height = 6, dpi = 300)
 
+# Scenario 2: Staff-bridge
 total_cases <- sapply(group_results, function(x) sum(x$status.matrix$infected != 0))
 w <- which.max(total_cases)
 
@@ -130,10 +151,13 @@ plot_data <- group_results[[w]]$sim.info
 ggplot(plot_data, aes(x = day, y = dailyInc)) +
   geom_line(color = "firebrick", size = 1) +
   geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in 2 Groups with Staff moving between",
+  labs(title = "Daily Infection Incidence in Scenario 2",
        x = "Day", y = "New Cases") +
   theme_minimal()
 
+ggsave("Incidence_Scenario_2.png", width = 8, height = 6, dpi = 300)
+
+# Scenario 3: Strict-cohorting
 total_cases <- sapply(strict_results, function(x) sum(x$status.matrix$infected != 0))
 w <- which.max(total_cases)
 
@@ -141,10 +165,25 @@ plot_data <- strict_results[[w]]$sim.info
 ggplot(plot_data, aes(x = day, y = dailyInc)) +
   geom_line(color = "firebrick", size = 1) +
   geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in Strict Cohorting",
+  labs(title = "Daily Infection Incidence in Scenario 3",
        x = "Day", y = "New Cases") +
   theme_minimal()
 
+ggsave("Incidence_Scenario_3.png", width = 8, height = 6, dpi = 300)
+
+# Scenario 4: Cohorting with Common staff room
+total_cases <- sapply(common_results, function(x) sum(x$status.matrix$infected != 0))
+w <- which.max(total_cases)
+
+plot_data <- common_results[[w]]$sim.info
+ggplot(plot_data, aes(x = day, y = dailyInc)) +
+  geom_line(color = "firebrick", size = 1) +
+  geom_area(fill = "firebrick", alpha = 0.2) +
+  labs(title = "Daily Infection Incidence in Scenario 4",
+       x = "Day", y = "New Cases") +
+  theme_minimal()
+
+ggsave("Incidence_Scenario_4.png", width = 8, height = 6, dpi = 300)
 
 ```
 
@@ -153,7 +192,7 @@ ggplot(plot_data, aes(x = day, y = dailyInc)) +
 
 ```{r}
 # ------------------------------------------------------------------------
-# Plot Attack rate for 3 scenarios
+# Plot Attack rate for 4 scenarios
 # ------------------------------------------------------------------------
 
 # Function to calculate metrics for a list of simulation results
@@ -168,61 +207,61 @@ get_metrics <- function(results_list, n, threshold = 0.10) {
   return(list(ar = attack_rates, extinct_rate = mean(is_extinct)))
 }
 
-# Calculate metrics for the 3 scenarios
+# Calculate metrics for the 4 scenarios
 m_baseline <- get_metrics(baseline_results, n)
 m_group    <- get_metrics(group_results, n)
 m_strict   <- get_metrics(strict_results, n)
+m_common   <- get_metrics(common_results, n)
 
-# --- Plot Setup (3 columns for the 3 Scenarios) ---
-par(mfrow=c(1, 3)) 
-
-# Scenario 1: Baseline (Free mixing)
-hist(m_baseline$ar, main="Scenario 1: Free mixing", 
-     xlab="Attack Rate", col="skyblue", xlim=c(0,1), breaks=20)
-
-# Scenario 2: Grouping (Two Groups with Staff)
-hist(m_group$ar, main="Scenario 2: Two Groups with Staff", 
-     xlab="Attack Rate", col="lightgreen", xlim=c(0,1), breaks=20)
-
-# Scenario 3: Strict Network (Strict Groups)
-hist(m_strict$ar, main="Scenario 3: Strict Groups", 
-     xlab="Attack Rate", col="salmon", xlim=c(0,1), breaks=20)
+  par(mfrow=c(1, 4)) 
+  
+  # Scenario 1: Baseline (Free mixing)
+  hist(m_baseline$ar, main="Scenario 1", xlab="Attack Rate", col="#0072B2", xlim=c(0,1), breaks=20)
+  
+  # Scenario 2: Staff-bridge (Two Groups with Staff)
+  hist(m_group$ar, main="Scenario 2", xlab="Attack Rate", col="#D55E00", xlim=c(0,1), breaks=20)
+  
+  # Scenario 3: Strict-cohorting 
+  hist(m_strict$ar, main="Scenario 3", xlab="Attack Rate", col="#009E73", xlim=c(0,1), breaks=20)
+  
+  # Scenario 4: Common Staff Room 
+  hist(m_common$ar, main="Scenario 4", xlab="Attack Rate", col="#CC79A7", xlim=c(0,1), breaks=20)
 
 # ------------------------------------------------------------------------
-# Plot Outbreak Probability for 3 scenarios
+# Plot Outbreak Probability for 4 scenarios
 # ------------------------------------------------------------------------
 
-# Set up side-by-side bar plots
-par(mfrow=c(1, 3))
-
-# Quick helper function for bar plots
-plot_outcome <- function(m_data, title) {
-  barplot(c(Extinct = m_data$extinct_rate, Major = 1 - m_data$extinct_rate), 
-          main = title, col = c("grey", "orange"), ylab = "Probability", ylim=c(0,1))
+  # Set up side-by-side bar plots
+  par(mfrow=c(1, 4))
+  
+  # Quick helper function for bar plots
+  plot_outcome <- function(m_data, title) {
+  barplot(c(Extinct = m_data$extinct_rate, Major = 1 - m_data$extinct_rate), main = title, col = c("grey", "orange"), ylab = "Probability", ylim=c(0,1))
 }
-
-# Generate plots for the 3 scenarios
-plot_outcome(m_baseline, "Scenario 1: Free mixing")
-plot_outcome(m_group, "Scenario 2: Two Groups with Staff")
-plot_outcome(m_strict, "Scenario 3: Strict Groups")
-
+  # Generate plots for the 4 scenarios
+  plot_outcome(m_baseline, "Scenario 1")
+  plot_outcome(m_group, "Scenario 2")
+  plot_outcome(m_strict, "Scenario 3")
+  plot_outcome(m_common, "Scenario 4")
 
 # ------------------------------------------------------------------------
-# Plot attack rate (non-extinct) for 3 scenarios
+# Plot attack rate (non-extinct) for 4 scenarios
 # ------------------------------------------------------------------------
 
-# Set layout to 1 row and 3 columns
-par(mfrow=c(1, 3), mar=c(4.4, 4.1, 3.1, 1.1))
 
-# List of results to iterate through
-scenarios_list <- list(Baseline = baseline_results, 
-                       Groups = group_results, 
-                       Strict = strict_results)
-
-# Colors for the 3 plots
-colors <- c("skyblue", "lightgreen", "orange")
-
-for(i in 1:length(scenarios_list)) {
+  # Set layout to 1 row and 4 columns
+  par(mfrow=c(1, 4), mar=c(4.4, 4.1, 3.1, 1.1))
+  
+  # List of results to iterate through
+  scenarios_list <- list(Scenario_1 = baseline_results, 
+                       Scenario_2 = group_results, 
+                       Scenario_3 = strict_results,
+                       Scenario_4 = common_results)
+  
+  # Colors for the 4 plots
+  colors <- c("#0072B2", "#D55E00", "#009E73", "#CC79A7")
+  
+  for(i in 1:length(scenarios_list)) {
   current_res <- scenarios_list[[i]]
   name <- names(scenarios_list)[i]
   
@@ -253,8 +292,17 @@ for(i in 1:length(scenarios_list)) {
   }
 }
 
+```
+
+
+
+```{r}
+
 
 ```
+
+
+
 
 
 
