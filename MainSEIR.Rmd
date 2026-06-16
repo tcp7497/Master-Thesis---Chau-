@@ -18,7 +18,9 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r}
-# WITH TIME BLOCKS
+# =========================================================================
+# With Time blocks
+# =========================================================================
 # Input parameters - fixed
 n<- 28 # population size
 ct.rates<-3 # avg number of daily contacts per day
@@ -26,14 +28,13 @@ nSeeds<-1 # number of cases starting the epidemic
 R0<-1.5 # average number of secondary cases generated per infected individual in a fully susceptible population
 t.stop  <- 360 # maximum number of days the simulation is running (if infected cases present)
 
-# Compute the reproduction number related to the selected network. 
+# Compute the reproduction number related to the selected network
 source("C:\\Users\\Chau\\Downloads\\F\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR_contact-rates.R")
 nSim<-1000
 nSeed<-01042026
 set.seed(nSeed)
 
 # Define roles for all individuals 
-roles_baseline <- rep("vol", n)
 roles <- c(rep("vol", 24), rep("staff", 4))  
 
 # Initialize result storage
@@ -46,12 +47,12 @@ for (i in 1:nSim) {
   if (i %% 100 == 0) {
     cat("Simulation:", i, "/", nSim, "\n")}
   
-  # SCENARIO 1: Free mixing (baseline)
+  # Scenario 1: Free mixing (baseline)
   baseline_results[[i]] <- sim.epi_seir(
     n = n, ct.rates = ct.rates, nSeeds = nSeeds, R0 = R0,
-    t.stop = t.stop, roles = roles_baseline, average_mod = average_mod)
+    t.stop = t.stop, roles = roles, average_mod = average_mod)
   
-  # SCENARIO 2: Staff-Bridge - Volunteers in rooms + Staff moving between
+  # Scenario 2: Staff-bridge - Volunteers in rooms + Staff moving between
   # IDs 1-12: Volunteers Group A | IDs 13-24: Volunteers Group B | IDs 25-28: Staff
   volunteers_a <- 12
   volunteers_b <- 12
@@ -60,8 +61,6 @@ for (i in 1:nSim) {
   scenario2 <- c(rep(1, volunteers_a), rep(2, volunteers_b), rep(3, staff))
   
   # Mixing Matrix (M) for 3 groups:
-  # Rows = Infector Group, Cols = Potential Infectee Group
-  # Probabilities should represent the likelihood of contact
   M_bridge <- matrix(c(
     0.90, 0.00, 0.10,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff (10%)
     0.00, 0.90, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff (10%)
@@ -69,12 +68,10 @@ for (i in 1:nSim) {
   ), nrow = 3, byrow = TRUE)
 
   group_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, nSeeds = nSeeds, 
-    R0 = R0, t.stop = t.stop, roles = roles, average_mod = average_mod,
-    group_assign = scenario2, M = M_bridge)
+    n = n, ct.rates = ct.rates, nSeeds = nSeeds, R0 = R0, t.stop = t.stop, 
+    roles = roles, average_mod = average_mod, group_assign = scenario2, M = M_bridge)
 
-  # SCENARIO 3: Strict Cohorting - Staff A for Group A, Staff B for Group B
-  # n=28: 12 Volunteers A, 12 Volunteers B, 2 Staff A, 2 Staff B
+  # Scenario 3: Strict-cohorting - Staff A for Group A, Staff B for Group B
   volunteers_room <- 12
   staff_room <- 2
   
@@ -82,7 +79,7 @@ for (i in 1:nSim) {
   scenario3 <- c(rep(1, volunteers_room), rep(2, volunteers_room), rep(3, staff_room), rep(4, staff_room))
   
   # Matrix M for 4 groups: Staff A (Group 3) only meets Volunteers A (Group 1). Staff B (Group 4) only meets Volunteers B (Group 2).
-  # There is no overlap between Group (1,3) and Group (2,4).
+  # There is no overlap between Group (1,3) and Group (2,4)
   M_strict <- matrix(c(
     0.90, 0.00, 0.10, 0.00,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff A (10%)
     0.00, 0.90, 0.00, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff B (10%)
@@ -91,38 +88,82 @@ for (i in 1:nSim) {
   ), nrow = 4, byrow = TRUE)
 
   strict_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, nSeeds = nSeeds,
-    R0 = R0, t.stop = t.stop, roles = roles, average_mod = average_mod, 
-    group_assign = scenario3, M = M_strict)
+    n = n, ct.rates = ct.rates, nSeeds = nSeeds, R0 = R0, t.stop = t.stop,
+    roles = roles, average_mod = average_mod, group_assign = scenario3, M = M_strict)
   
-  # SCENARIO 4: Cohorting with Common Staff Room - Staff A for Group A, Staff B for Group B, 2 Staff groups meet each other at common room after work
+  # Scenario 4: Common staff room - Staff A for Group A, Staff B for Group B, 2 Staff groups meet each other at common room after work
   
   # Group 1: Volunteers A | Group 2: Volunteers B | Group 3: Staff A | Group 4: Staff B
   scenario4 <- c(rep(1, volunteers_room), rep(2, volunteers_room), rep(3, staff_room), rep(4, staff_room))
+  
   # Matrix M for 4 groups: Staff A (Group 3) only meets Volunteers A (Group 1). Staff B (Group 4) only meets Volunteers B (Group 2). 2 Staff groups meet each other at common room after work
   M_common <- matrix(c(
     0.90, 0.00, 0.10, 0.00,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff A (10%)
     0.00, 0.90, 0.00, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff B (10%)
     0.45, 0.00, 0.45, 0.10,  # Group 3 (Staff A) visits Vol A (45%), Staff A (45%), Staff B (10%)
-    0.00, 0.45, 0.10, 0.45   # Group 4 (Staff B) visits B (50%), Staff B (45%), Staff A (10%)
+    0.00, 0.45, 0.10, 0.45   # Group 4 (Staff B) visits Vol B (45%), Staff B (45%), Staff A (10%)
   ), nrow = 4, byrow = TRUE)
 
   common_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, nSeeds = nSeeds,
-    R0 = R0, t.stop = t.stop, roles = roles, average_mod = average_mod, 
+    n = n, ct.rates = ct.rates, nSeeds = nSeeds, R0 = R0, t.stop = t.stop,
+    roles = roles, average_mod = average_mod, 
     group_assign = scenario4, M = M_common)
 }
 
+# =========================================================================
+# Placebo & Vaccine Loop (Volunteers only)
+# =========================================================================
+vacc_coverage <- 0.5
+VE_levels <- c(0, 0.3, 0.5, 0.7, 0.9)  # 0 = placebo
+vacc_results <- list()
 
+for (ve in VE_levels) {
+  ve_name <- paste0("VE_", ve * 100)
+  
+  vacc_results[[ve_name]] <- list(
+    baseline = list(),
+    group    = list(),
+    strict   = list(),
+    common   = list()
+  )
+  
+  for (i in 1:nSim) {
+    if (i %% 100 == 0) cat("VE =", ve, "| Simulation:", i, "/", nSim, "\n")
+    sim_seed <- i * 100
 
+    set.seed(sim_seed)
+    vacc_results[[ve_name]]$baseline[[i]] <- sim.epi_seir(
+      n=n, ct.rates=ct.rates, nSeeds=nSeeds, R0=R0, t.stop=t.stop,
+      roles=roles, average_mod=average_mod,
+      vacc_coverage=vacc_coverage, vacc_efficacy_sus=ve, vacc_target="vol")
 
+    set.seed(sim_seed)
+    vacc_results[[ve_name]]$group[[i]] <- sim.epi_seir(
+      n=n, ct.rates=ct.rates, nSeeds=nSeeds, R0=R0, t.stop=t.stop,
+      roles=roles, average_mod=average_mod,
+      group_assign=scenario2, M=M_bridge,
+      vacc_coverage=vacc_coverage, vacc_efficacy_sus=ve, vacc_target="vol")
+
+    set.seed(sim_seed)
+    vacc_results[[ve_name]]$strict[[i]] <- sim.epi_seir(
+      n=n, ct.rates=ct.rates, nSeeds=nSeeds, R0=R0, t.stop=t.stop,
+      roles=roles, average_mod=average_mod,
+      group_assign=scenario3, M=M_strict,
+      vacc_coverage=vacc_coverage, vacc_efficacy_sus=ve, vacc_target="vol")
+
+    set.seed(sim_seed)
+    vacc_results[[ve_name]]$common[[i]] <- sim.epi_seir(
+      n=n, ct.rates=ct.rates, nSeeds=nSeeds, R0=R0, t.stop=t.stop,
+      roles=roles, average_mod=average_mod,
+      group_assign=scenario4, M=M_common,
+      vacc_coverage=vacc_coverage, vacc_efficacy_sus=ve, vacc_target="vol")
+  }
+}
 ```
-
-
 ```{r}
-# ------------------------------------------------------------------------
+# =========================================================================
 # Plot of the incidence over time for 4 scenarios
-# ------------------------------------------------------------------------
+# =========================================================================
 # Plotting a few summary measures
 library(ggplot2)
 library(tidyr)
@@ -134,10 +175,10 @@ total_cases <- sapply(baseline_results, function(x) sum(x$status.matrix$infected
 w <- which.max(total_cases)
 
 plot_data <- baseline_results[[w]]$sim.info
-ggplot(plot_data, aes(x = day, y = dailyInc)) +
+ggplot(plot_data, aes(x = day, y = dailyInc)) + 
   geom_line(color = "firebrick", size = 1) +
   geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in Scenario 1",
+  labs(title = "Daily Infection Incidence in Scenario 1", 
        x = "Day", y = "New Cases") +
   theme_minimal()
 
@@ -171,7 +212,7 @@ ggplot(plot_data, aes(x = day, y = dailyInc)) +
 
 ggsave("Incidence_Scenario_3.png", width = 8, height = 6, dpi = 300)
 
-# Scenario 4: Cohorting with Common staff room
+# Scenario 4: Common staff room
 total_cases <- sapply(common_results, function(x) sum(x$status.matrix$infected != 0))
 w <- which.max(total_cases)
 
@@ -184,27 +225,27 @@ ggplot(plot_data, aes(x = day, y = dailyInc)) +
   theme_minimal()
 
 ggsave("Incidence_Scenario_4.png", width = 8, height = 6, dpi = 300)
-
 ```
-
-
-
-
 ```{r}
-# ------------------------------------------------------------------------
-# Plot Attack rate for 4 scenarios
-# ------------------------------------------------------------------------
-
+# =========================================================================
+# Plot Attack Rate for 4 scenarios
+# =========================================================================
 # Function to calculate metrics for a list of simulation results
-get_metrics <- function(results_list, n, threshold = 0.10) {
-  attack_rates <- sapply(results_list, function(res) {
-    # Count individuals who were ever infected (status is not 0)
-    sum(res$status.matrix$infected != 0) / n
+get_metrics <- function(results_list, n, min_cases = 3) {
+  # Count total ever-infected (including index case)
+  total_infected <- sapply(results_list, function(res) {
+    sum(res$status.matrix$infected != 0) # includes index case
   })
   
-  # Define outbreaks below the threshold as "extinct"
-  is_extinct <- attack_rates < threshold
-  return(list(ar = attack_rates, extinct_rate = mean(is_extinct)))
+  attack_rates <- total_infected / n
+  
+  # Major outbreak: at least min_cases total infections (including index)
+  # With n=28: 3/28 = 10.7% ≈ 10% threshold
+  is_extinct   <- total_infected < min_cases
+  
+  return(list(ar = attack_rates, 
+              total_infected = total_infected, 
+              extinct_rate   = mean(is_extinct)))
 }
 
 # Calculate metrics for the 4 scenarios
@@ -213,30 +254,26 @@ m_group    <- get_metrics(group_results, n)
 m_strict   <- get_metrics(strict_results, n)
 m_common   <- get_metrics(common_results, n)
 
+  # Set up side-by-side bar plots
   par(mfrow=c(1, 4)) 
-  
-  # Scenario 1: Baseline (Free mixing)
+  # Scenario 1: Free mixing 
   hist(m_baseline$ar, main="Scenario 1", xlab="Attack Rate", col="#0072B2", xlim=c(0,1), breaks=20)
-  
-  # Scenario 2: Staff-bridge (Two Groups with Staff)
+  # Scenario 2: Staff-bridge 
   hist(m_group$ar, main="Scenario 2", xlab="Attack Rate", col="#D55E00", xlim=c(0,1), breaks=20)
-  
   # Scenario 3: Strict-cohorting 
   hist(m_strict$ar, main="Scenario 3", xlab="Attack Rate", col="#009E73", xlim=c(0,1), breaks=20)
-  
-  # Scenario 4: Common Staff Room 
+  # Scenario 4: Common staff room 
   hist(m_common$ar, main="Scenario 4", xlab="Attack Rate", col="#CC79A7", xlim=c(0,1), breaks=20)
 
-# ------------------------------------------------------------------------
+# =========================================================================
 # Plot Outbreak Probability for 4 scenarios
-# ------------------------------------------------------------------------
-
+# =========================================================================
   # Set up side-by-side bar plots
   par(mfrow=c(1, 4))
-  
   # Quick helper function for bar plots
   plot_outcome <- function(m_data, title) {
-  barplot(c(Extinct = m_data$extinct_rate, Major = 1 - m_data$extinct_rate), main = title, col = c("grey", "orange"), ylab = "Probability", ylim=c(0,1))
+  barplot(c(Extinct = m_data$extinct_rate, Major = 1 - m_data$extinct_rate), 
+          main = title, col = c("grey", "orange"), ylab = "Probability", ylim=c(0,1))
 }
   # Generate plots for the 4 scenarios
   plot_outcome(m_baseline, "Scenario 1")
@@ -244,20 +281,16 @@ m_common   <- get_metrics(common_results, n)
   plot_outcome(m_strict, "Scenario 3")
   plot_outcome(m_common, "Scenario 4")
 
-# ------------------------------------------------------------------------
-# Plot attack rate (non-extinct) for 4 scenarios
-# ------------------------------------------------------------------------
-
-
+# =========================================================================
+# Plot Attack Rate (Non-extinct) for 4 scenarios
+# =========================================================================
   # Set layout to 1 row and 4 columns
   par(mfrow=c(1, 4), mar=c(4.4, 4.1, 3.1, 1.1))
-  
   # List of results to iterate through
   scenarios_list <- list(Scenario_1 = baseline_results, 
-                       Scenario_2 = group_results, 
-                       Scenario_3 = strict_results,
-                       Scenario_4 = common_results)
-  
+                         Scenario_2 = group_results, 
+                         Scenario_3 = strict_results,
+                         Scenario_4 = common_results)
   # Colors for the 4 plots
   colors <- c("#0072B2", "#D55E00", "#009E73", "#CC79A7")
   
@@ -265,20 +298,14 @@ m_common   <- get_metrics(common_results, n)
   current_res <- scenarios_list[[i]]
   name <- names(scenarios_list)[i]
   
-  # 1. Calculate Attack Rate for all nSim runs
-  ar_all <- sapply(current_res, function(res) {
-    sum(res$status.matrix$infected != 0) / n
-  })
+  # Filter for Major outbreaks 
+  m <- get_metrics(current_res, n)
+  major_ar <- m$ar[m$total_infected >= 3]
   
-  # 2. Filter for Major outbreaks (Attack Rate >= 10%)
-  major_ar <- ar_all[ar_all >= 0.10]
-  
-  # 3. Draw histogram
+  # Draw histogram
   if(length(major_ar) > 0) {
-    hist(major_ar, 
-         main = paste(name, ": Major AR"), 
-         xlab = "Proportion Infected", 
-         ylab = "Frequency",
+    hist(major_ar, main = paste(name, ": Major AR"), 
+         xlab = "Proportion Infected", ylab = "Frequency",
          col  = colors[i], 
          xlim = c(0, 1),      # Fixed X-axis
          ylim = c(0, 100),    # Unified Y-axis set to 100
@@ -290,265 +317,205 @@ m_common   <- get_metrics(common_results, n)
          xlab = "Proportion Infected", ylab = "Frequency", axes = TRUE)
     text(0.5, 50, "0% Major Outbreaks", col = "red", cex = 1.2)
   }
+  }
+```
+```{r}
+# =========================================================================
+# Plot Attack Rate by Vaccine Efficacy Levels
+# =========================================================================
+get_ar <- function(res_list, n) {
+  sapply(res_list, function(x) sum(x$status.matrix$infected != 0) / n)
 }
 
-```
-
-
-
-```{r}
-
-
-```
-
-
-
-
-
-
-```{r}
-n<- 28 # population size
-ct.rates<-3 # avg number of daily contacts per day
-nSeeds<-1 # number of cases starting the epidemic
-R0<-1.5 # average number of secondary cases generated per infected individual in a fully susceptible population
-inf.param<- R0/(ct.rates)
-# pathogen<-"COVID-19" 
-t.stop  <- 360 # maximum number of days the simulation is running (if infected cases present)
-
-
-# Compute the reproduction number related to the selected network. 
-source("F:\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR.R")
-nSim<-1000
-nSeed<-01042026
-set.seed(nSeed)
-
-baseline_results <- list() 
-group_results <- list() 
-strict_results <- list()
-
-for (i in 1:nSim) {
-  if (i %% 100 == 0) {
-    cat("Simulation:", i, "/", nSim, "\n")}
+df_ve <- do.call(rbind, lapply(names(vacc_results), function(ve_name) {
+  ve_val <- as.numeric(sub("VE_", "", ve_name)) / 100
   
-  # SCENARIO 1: Free mixing (baseline)
-  baseline_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, nSeeds = 1, inf.param = inf.param, t.stop = t.stop)
-  
-  # SCENARIO 2: Staff-Bridge - Volunteers in rooms + Staff moving between
-  # IDs 1-12: Volunteers Group A | IDs 13-24: Volunteers Group B | IDs 25-28: Staff
-  volunteers_a <- 12
-  volunteers_b <- 12
-  staff  <- 4
-  
-  scenario2 <- c(rep(1, volunteers_a), rep(2, volunteers_b), rep(3, staff))
-  
-  # Mixing Matrix (M) for 3 groups:
-  # Rows = Infector Group, Cols = Potential Infectee Group
-  # Probabilities should represent the likelihood of contact
-  M_matrix <- matrix(c(
-    0.90, 0.00, 0.10,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff (10%)
-    0.00, 0.90, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff (10%)
-    0.40, 0.40, 0.20   # Group 3 (Staff) visits A (40%), B (40%), and other Staff (20%)
-  ), nrow = 3, byrow = TRUE)
+  do.call(rbind, list(
+    data.frame(AR       = get_ar(vacc_results[[ve_name]]$baseline, n),
+               Scenario = "Scenario 1", VE = ve_val),
+    data.frame(AR       = get_ar(vacc_results[[ve_name]]$group, n),
+               Scenario = "Scenario 2", VE = ve_val),
+    data.frame(AR       = get_ar(vacc_results[[ve_name]]$strict, n),
+               Scenario = "Scenario 3", VE = ve_val),
+    data.frame(AR       = get_ar(vacc_results[[ve_name]]$common, n),
+               Scenario = "Scenario 4", VE = ve_val)
+  ))
+}))
 
-  group_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, 
-    nSeeds = 1, 
-    inf.param = inf.param, t.stop = t.stop, 
-    group_assign = scenario2, M = M_matrix)
+df_ve$VE <- factor(df_ve$VE, levels = c(0, 0.3, 0.5, 0.7, 0.9),
+                   labels = c("Placebo\n(VE=0)", "VE=30%", 
+                              "VE=50%", "VE=70%", "VE=90%"))
 
-  # SCENARIO 3: Strict Cohorting - Staff A for Group A, Staff B for Group B
-  # n=28: 12 Volunteers A, 12 Volunteers B, 2 Staff A, 2 Staff B
-  volunteers_room <- 12
-  staff_room <- 2
-  
-  # Group 1: Volunteers A | Group 2: Volunteers B | Group 3: Staff A | Group 4: Staff B
-  scenario3 <- c(rep(1, volunteers_room), rep(2, volunteers_room), 
-                     rep(3, staff_room), rep(4, staff_room))
-  
-  # Matrix M for 4 groups: Staff A (Group 3) only meets Volunteers A (Group 1). Staff B (Group 4) only meets Volunteers B (Group 2).
-  # There is no overlap between Group (1,3) and Group (2,4).
-  M_strict <- matrix(c(
-    0.90, 0.00, 0.10, 0.00,  # Group 1 (Volunteers A) stays in Room A (90%), only sees Staff A (10%)
-    0.00, 0.90, 0.00, 0.10,  # Group 2 (Volunteers B) stays in Room B (90%), only sees Staff B (10%)
-    0.50, 0.00, 0.50, 0.00,  # Group 3 (Staff A) visits A (50%), and other Staff A (50%)
-    0.00, 0.50, 0.00, 0.50   # Group 3 (Staff B) visits B (50%), and other Staff B (50%)
-  ), nrow = 4, byrow = TRUE)
+# Plot: Attack Rate (major outbreaks only)
+df_major_ve <- df_ve[df_ve$AR >= 3/n, ]
 
-  strict_results[[i]] <- sim.epi_seir(
-    n = n, ct.rates = ct.rates, 
-    nSeeds = 1,
-    inf.param = inf.param, t.stop = t.stop, 
-    group_assign = scenario3, M = M_strict)
+ggplot(df_major_ve, aes(x = VE, y = AR, fill = VE)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+  facet_wrap(~ Scenario, nrow = 1) +
+  scale_fill_manual(values = c("Placebo\n(VE=0)" = "#999999",
+                               "VE=30%"          = "#0072B2",
+                               "VE=50%"          = "#D55E00",
+                               "VE=70%"          = "#009E73",
+                               "VE=90%"          = "#CC79A7")) +
+  labs(title = "Attack Rate (Major Outbreaks) by Vaccine Efficacy Levels",
+       x = NULL, y = "Attack Rate (proportion infected)",
+       fill = "Vaccine Efficacy") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        axis.text.x = element_blank())
+
+ggsave("Attack_Rate_VE_levels.png", width = 12, height = 6, dpi = 300)
+
+# Table: Probability of Major Outbreak by VE Level
+get_ar <- function(res_list, n) {
+  sapply(res_list, function(x) sum(x$status.matrix$infected != 0) / n)
 }
 
+scenarios <- list(
+  "Scenario 1" = "baseline",
+  "Scenario 2" = "group",
+  "Scenario 3" = "strict",
+  "Scenario 4" = "common"
+)
 
+ve_labels <- c("VE_0"="Placebo", "VE_30"="VE=30%", 
+               "VE_50"="VE=50%", "VE_70"="VE=70%", 
+               "VE_90"="VE=90%")
 
+df_table <- do.call(rbind, lapply(names(scenarios), function(sc_name) {
+  sc_key <- scenarios[[sc_name]]
+  row <- data.frame(Scenario = sc_name)
+  for (ve_name in names(ve_labels)) {
+    total_inf <- sapply(vacc_results[[ve_name]][[sc_key]], function(x) {
+      sum(x$status.matrix$infected != 0)
+    })
+    row[[ve_labels[ve_name]]] <- round(mean(total_inf >= 3), 3)
+  }
+  row
+}))
+
+print(df_table)
+
+# =========================================================================
+# Attack Rates by VE Levels (ALL simulations, including extinct)
+# =========================================================================
+# Table Mean AR
+df_unconditional <- do.call(rbind, lapply(names(scenarios), function(sc_name) {
+  sc_key <- scenarios[[sc_name]]
+  row <- data.frame(Scenario = sc_name)
+  for (ve_name in names(ve_labels)) {
+    ar <- get_ar(vacc_results[[ve_name]][[sc_key]], n)
+    row[[ve_labels[ve_name]]] <- round(mean(ar), 3)  # mean over ALL sims
+  }
+  row
+}))
+print(df_unconditional)
+
+# Boxplot: Total AR 
+ggplot(df_ve, aes(x = VE, y = AR, fill = VE)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
+  facet_wrap(~ Scenario, nrow = 1) +
+  scale_fill_manual(values = c("Placebo\n(VE=0)" = "#999999",
+                               "VE=30%"          = "#0072B2",
+                               "VE=50%"          = "#D55E00",
+                               "VE=70%"          = "#009E73",
+                               "VE=90%"          = "#CC79A7")) +
+  labs(title = "Total Attack Rates by Vaccine Efficacy Levels",
+       x = NULL, y = "Attack Rates (proportion infected)",
+       fill = "Vaccine Efficacy") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        axis.text.x = element_blank())
+ggsave("TotalAR_VE_levels.png", width = 12, height = 6, dpi = 300)
 ```
-
-
 ```{r}
-# ------------------------------------------------------------------------
-# Plot of the incidence over time 
-# ------------------------------------------------------------------------
-# Plotting a few summary measures
+# =========================================================================
+# Calibration Check With & Without Time blocks
+# =========================================================================
 library(ggplot2)
-library(tidyr)
-library(patchwork)
 library(dplyr)
+library(patchwork)
+library(scales)
 
-total_cases <- sapply(baseline_results, function(x) sum(x$status.matrix$infected != 0))
-w <- which.max(total_cases)
+set.seed(123)
+nSim_val <- 1000
 
-plot_data <- baseline_results[[w]]$sim.info
-ggplot(plot_data, aes(x = day, y = dailyInc)) +
-  geom_line(color = "firebrick", size = 1) +
-  geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in Free Mixing network",
-       x = "Day", y = "New Cases") +
-  theme_minimal()
+# 1. Run 2 versions
+# Version 1: No time blocks
+val_no_blocks <- replicate(nSim_val, {
+  s <- sim.epi_seir(n = n, ct.rates = ct.rates, nSeeds = nSeeds,
+    R0 = R0, t.stop = t.stop, roles = roles,
+    average_mod = 1, # no time blocks
+    group_assign = NULL, M = NULL)
+  sum(s$status.matrix$infected != 0) / n
+})
 
+# Version 2: Calibrated (with time blocks)
+val_with_blocks <- replicate(nSim_val, {
+  s <- sim.epi_seir(n = n, ct.rates = ct.rates, nSeeds = nSeeds,
+    R0 = R0, t.stop = t.stop, roles = roles,
+    average_mod = average_mod,    # calibrated (with time blocks)
+    group_assign = NULL, M = NULL)
+  sum(s$status.matrix$infected != 0) / n
+})
 
-total_cases <- sapply(group_results, function(x) sum(x$status.matrix$infected != 0))
-w <- which.max(total_cases)
+# 2. Summary statistics
+cat("\n=== Calibration Check Summary ===\n")
+summary_cal <- data.frame(
+  Version       = c("No Time Blocks", "Calibrated"),
+  Mean_AR       = round(c(mean(val_no_blocks),
+                           mean(val_with_blocks)), 3),
+  Median_AR     = round(c(median(val_no_blocks),
+                           median(val_with_blocks)), 3),
+  P_outbreak    = round(c(mean(val_no_blocks  > 0.10),
+                           mean(val_with_blocks > 0.10)), 3),
+  P_major       = round(c(mean(val_no_blocks >= 3/n),
+                        mean(val_with_blocks >= 3/n)), 3)
+)
+print(summary_cal)
 
-plot_data <- group_results[[w]]$sim.info
-ggplot(plot_data, aes(x = day, y = dailyInc)) +
-  geom_line(color = "firebrick", size = 1) +
-  geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in 2 Groups with Staff moving between",
-       x = "Day", y = "New Cases") +
-  theme_minimal()
+# 3. Build dataframe
+df_val <- data.frame(
+  AR      = c(val_no_blocks, val_with_blocks),
+  Version = rep(c("No Time Blocks\n(average_mod = 1)",
+                  "Calibrated\n(with Time Blocks)"), each = nSim_val))
 
-total_cases <- sapply(strict_results, function(x) sum(x$status.matrix$infected != 0))
-w <- which.max(total_cases)
+df_val$Version <- factor(
+  df_val$Version,
+  levels = c("No Time Blocks\n(average_mod = 1)",
+             "Calibrated\n(with Time Blocks)"))
 
-plot_data <- strict_results[[w]]$sim.info
-ggplot(plot_data, aes(x = day, y = dailyInc)) +
-  geom_line(color = "firebrick", size = 1) +
-  geom_area(fill = "firebrick", alpha = 0.2) +
-  labs(title = "Daily Infection Incidence in Strict Cohorting",
-       x = "Day", y = "New Cases") +
-  theme_minimal()
+# Major outbreaks only
+df_major <- df_val %>% filter(AR >= 3/n)
+# Annotation
+ann_major <- df_major %>% group_by(Version) %>%
+  summarise(mean_AR = round(mean(AR), 3), med_AR  = round(median(AR), 3),
+            .groups = "drop") %>%
+  mutate(label = paste0("mean=", mean_AR, "\nmedian=", med_AR))
 
+# Plot
+p_cal <- ggplot(df_major, aes(x = Version, y = AR, fill = Version)) +
+  geom_violin(trim = TRUE, alpha = 0.85) +
+  geom_boxplot(width = 0.08, fill = "white", outlier.shape = NA, color = "grey30") +
+  stat_summary(fun = mean, geom = "point", shape = 21, size = 3,
+               fill = "red", color = "black") +
+  geom_text(data = ann_major, aes(x = Version, y = 0.92, label = label),
+            size = 3.5, color = "grey30", lineheight = 0.9) +
+  scale_fill_manual(
+    values = c(
+      "No Time Blocks\n(average_mod = 1)" = "#0072B2",
+      "Calibrated\n(with Time Blocks)"    = "#D55E00"), guide = "none") +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1)) +
+  coord_cartesian(ylim = c(0.10, 1)) +
+  labs(title    = "Calibration Check: Attack Rate Distribution",
+       subtitle = paste0("Major outbreaks | R0 = ", R0,
+                         " | n = ", nSim_val, " simulations | Red dot = mean"),
+       x = NULL, y = "Final Attack Rate") +
+  theme_bw(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), 
+        plot.subtitle    = element_text(color = "grey40", size = 9))
+
+print(p_cal)
+ggsave("validation_calibration_violin.png", p_cal, width = 7, height = 5, dpi = 300)
 ```
-
-
-
-```{r}
-# ------------------------------------------------------------------------
-# Plot Attack rate for 3 scenarios
-# ------------------------------------------------------------------------
-
-# Function to calculate metrics for a list of simulation results
-get_metrics <- function(results_list, n, threshold = 0.10) {
-  attack_rates <- sapply(results_list, function(res) {
-    # Count individuals who were ever infected (status is not 0)
-    sum(res$status.matrix$infected != 0) / n
-  })
-  
-  # Define outbreaks below the threshold as "extinct"
-  is_extinct <- attack_rates < threshold
-  return(list(ar = attack_rates, extinct_rate = mean(is_extinct)))
-}
-
-# Calculate metrics for the 3 scenarios
-m_baseline <- get_metrics(baseline_results, n)
-m_group    <- get_metrics(group_results, n)
-m_strict   <- get_metrics(strict_results, n)
-
-# --- Plot Setup (3 columns for the 3 Scenarios) ---
-par(mfrow=c(1, 3)) 
-
-# Scenario 1: Baseline (Free mixing)
-hist(m_baseline$ar, main="Scenario 1: Free mixing", 
-     xlab="Attack Rate", col="skyblue", xlim=c(0,1), breaks=20)
-
-# Scenario 2: Grouping (Two Groups with Staff)
-hist(m_group$ar, main="Scenario 2: Two Groups with Staff", 
-     xlab="Attack Rate", col="lightgreen", xlim=c(0,1), breaks=20)
-
-# Scenario 3: Strict Network (Strict Groups)
-hist(m_strict$ar, main="Scenario 3: Strict Groups", 
-     xlab="Attack Rate", col="salmon", xlim=c(0,1), breaks=20)
-
-# ------------------------------------------------------------------------
-# Plot Outbreak Probability for 3 scenarios
-# ------------------------------------------------------------------------
-
-# Set up side-by-side bar plots
-par(mfrow=c(1, 3))
-
-# Quick helper function for bar plots
-plot_outcome <- function(m_data, title) {
-  barplot(c(Extinct = m_data$extinct_rate, Major = 1 - m_data$extinct_rate), 
-          main = title, col = c("grey", "orange"), ylab = "Probability", ylim=c(0,1))
-}
-
-# Generate plots for the 3 scenarios
-plot_outcome(m_baseline, "Scenario 1: Free mixing")
-plot_outcome(m_group, "Scenario 2: Two Groups with Staff")
-plot_outcome(m_strict, "Scenario 3: Strict Groups")
-
-
-# ------------------------------------------------------------------------
-# Plot attack rate (non-extinct) for 3 scenarios
-# ------------------------------------------------------------------------
-
-# Set layout to 1 row and 3 columns
-par(mfrow=c(1, 3), mar=c(4.4, 4.1, 3.1, 1.1))
-
-# List of results to iterate through
-scenarios_list <- list(Baseline = baseline_results, 
-                       Groups = group_results, 
-                       Strict = strict_results)
-
-# Colors for the 3 plots
-colors <- c("skyblue", "lightgreen", "orange")
-
-for(i in 1:length(scenarios_list)) {
-  current_res <- scenarios_list[[i]]
-  name <- names(scenarios_list)[i]
-  
-  # 1. Calculate Attack Rate for all nSim runs
-  ar_all <- sapply(current_res, function(res) {
-    sum(res$status.matrix$infected != 0) / n
-  })
-  
-  # 2. Filter for Major outbreaks (Attack Rate >= 10%)
-  major_ar <- ar_all[ar_all >= 0.10]
-  
-  # 3. Draw histogram
-  if(length(major_ar) > 0) {
-    hist(major_ar, 
-         main = paste(name, ": Major AR"), 
-         xlab = "Proportion Infected", 
-         ylab = "Frequency",
-         col  = colors[i], 
-         xlim = c(0, 1),      # Fixed X-axis
-         ylim = c(0, 100),    # Unified Y-axis set to 100
-         breaks = seq(0, 1, by=0.1))
-  } else {
-    # Placeholder for scenarios with no major outbreaks
-    plot(NULL, xlim=c(0,1), ylim=c(0,100), 
-         main = paste(name, ": No Major Outbreak"), 
-         xlab = "Proportion Infected", ylab = "Frequency", axes = TRUE)
-    text(0.5, 50, "0% Major Outbreaks", col = "red", cex = 1.2)
-  }
-}
-
-```
-
-
-
-```{r}
-
-```
-
-
-
-```{r}
-
-```
-
-

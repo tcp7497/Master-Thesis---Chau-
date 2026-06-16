@@ -14,32 +14,26 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-
 ```{r run_simulations, cache=TRUE}
-# ============================================================
-# SENSITIVITY ANALYSIS — Variable Importance
+# =========================================================================
+# Sensitivity analysis — Variable Importance
 # Outcomes  : logit(AR_total), logit(AR_vol), logit(AR_staff)
 # Parameters: R0, k, k_sus, k_ct, ct.rates, mean_e, mean_i
-# ============================================================
-
-source("C:\\Users\\Chau\\Downloads\\F\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR_contact-rates.R")
-
+# =========================================================================
 library(lhs)
 library(randomForest)
 library(ggplot2)
 library(dplyr)
+source("C:\\Users\\Chau\\Downloads\\F\\Statistics UHasselt\\Semester 4\\Master Thesis\\Master-Thesis---Chau-\\SEIR_contact-rates.R")
 
-# ============================================================
 # Fixed Setting
-# ============================================================
 n       <- 28
 nSeeds  <- 1
 t.stop  <- 360
 nRep    <- 20
 n_SA    <- 500
 
-roles_baseline <- rep("vol", n)
-roles          <- c(rep("vol", 24), rep("staff", 4))
+roles <- c(rep("vol", 24), rep("staff", 4))
 
 sc2_assign <- c(rep(1, 12), rep(2, 12), rep(3, 4))
 M_bridge <- matrix(c(
@@ -69,11 +63,8 @@ sc_labels <- c(sc1 = "Free Mixing",
                sc3 = "Strict Cohorting",
                sc4 = "Common Staff Room")
 
-# ============================================================
 # Latin Hypercube Sampling
-# ============================================================
 set.seed(01042026)
-
 lhs_matrix <- randomLHS(n_SA, 7)
 
 input_params <- data.frame(
@@ -90,16 +81,14 @@ param_names <- names(input_params)
 cat("LHS sampling done. Parameter ranges:\n")
 print(sapply(input_params, range))
 
-# ============================================================
 # Helper Function
-# ============================================================
 logit <- function(p) log(p / (1 - p))
 
 compute_AR <- function(sim_result, n_vol = 24, n_staff = 4) {
   sm  <- sim_result$status.matrix
   inf <- !is.na(sm$time.of.infection)
   eps <- 1e-3
-  AR_total <- pmin(pmax(max(sum(inf) - nSeeds, 0) / (n - nSeeds), eps), 1 - eps)
+  AR_total <- pmin(pmax(sum(inf) / n, eps), 1 - eps)
   AR_vol   <- pmin(pmax(sum(inf & sm$roles == "vol")   / n_vol,   eps), 1 - eps)
   AR_staff <- pmin(pmax(sum(inf & sm$roles == "staff") / n_staff, eps), 1 - eps)
   return(c(AR_total = AR_total, AR_vol = AR_vol, AR_staff = AR_staff))
@@ -108,42 +97,32 @@ compute_AR <- function(sim_result, n_vol = 24, n_staff = 4) {
 run_one_sim <- function(p, sc_id) {
   switch(sc_id,
     "sc1" = sim.epi_seir(
-      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds,
-      R0 = p$R0, t.stop = t.stop,
-      roles = roles_baseline, average_mod = average_mod,
-      k = p$k, k_sus = p$k_sus, k_ct = p$k_ct,
-      mean_e = p$mean_e, sd_e = 2.8,
-      mean_i = p$mean_i, sd_i = 3.8),
-    "sc2" = sim.epi_seir(
-      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds,
-      R0 = p$R0, t.stop = t.stop,
+      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds, R0 = p$R0, t.stop = t.stop,
       roles = roles, average_mod = average_mod,
       k = p$k, k_sus = p$k_sus, k_ct = p$k_ct,
-      mean_e = p$mean_e, sd_e = 2.8,
-      mean_i = p$mean_i, sd_i = 3.8,
+      mean_e = p$mean_e, sd_e = 2.8, mean_i = p$mean_i, sd_i = 3.8),
+    "sc2" = sim.epi_seir(
+      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds, R0 = p$R0, t.stop = t.stop,
+      roles = roles, average_mod = average_mod,
+      k = p$k, k_sus = p$k_sus, k_ct = p$k_ct,
+      mean_e = p$mean_e, sd_e = 2.8, mean_i = p$mean_i, sd_i = 3.8,
       group_assign = sc2_assign, M = M_bridge),
     "sc3" = sim.epi_seir(
-      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds,
-      R0 = p$R0, t.stop = t.stop,
+      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds, R0 = p$R0, t.stop = t.stop,
       roles = roles, average_mod = average_mod,
       k = p$k, k_sus = p$k_sus, k_ct = p$k_ct,
-      mean_e = p$mean_e, sd_e = 2.8,
-      mean_i = p$mean_i, sd_i = 3.8,
+      mean_e = p$mean_e, sd_e = 2.8, mean_i = p$mean_i, sd_i = 3.8,
       group_assign = sc34_assign, M = M_strict),
     "sc4" = sim.epi_seir(
-      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds,
-      R0 = p$R0, t.stop = t.stop,
+      n = n, ct.rates = p$ct.rates, nSeeds = nSeeds, R0 = p$R0, t.stop = t.stop,
       roles = roles, average_mod = average_mod,
       k = p$k, k_sus = p$k_sus, k_ct = p$k_ct,
-      mean_e = p$mean_e, sd_e = 2.8,
-      mean_i = p$mean_i, sd_i = 3.8,
+      mean_e = p$mean_e, sd_e = 2.8, mean_i = p$mean_i, sd_i = 3.8,
       group_assign = sc34_assign, M = M_common)
   )
 }
 
-# ============================================================
 # Run Simulations
-# ============================================================
 cat("\n--- Sanity check (1 sim) ---\n")
 sim_test <- run_one_sim(input_params[1, ], "sc1")
 ar_test  <- compute_AR(sim_test)
@@ -188,15 +167,11 @@ for (sc in scenarios) {
 }
 
 saveRDS(all_results, "sensitivity_all_scenarios.rds")
-cat("\nAll simulations done. Results saved.\n")
 ```
-
-
-
 ```{r rf_importance, cache=TRUE, dependson="run_simulations"}
-# ============================================================
+# =========================================================================
 # Random Forest Variable Importance
-# ============================================================
+# =========================================================================
 cat("\n--- Fitting RF ---\n")
 
 param_labels <- c(
@@ -209,36 +184,25 @@ param_labels <- c(
   mean_i   = "mean_i"
 )
 
-outcome_labels <- c(
-  logitAR_total = "AR Total",
-  logitAR_vol   = "AR Volunteers",
-  logitAR_staff = "AR Staff"
-)
+outcome_labels <- c(logitAR_total = "AR Total", logitAR_vol = "AR Volunteers", 
+                    logitAR_staff = "AR Staff")
 
 imp_list1 <- list()
 rf_models  <- list()   
 
 for (sc in scenarios) {
   df <- all_results[[sc]]
-  df <- df[complete.cases(df[, c("logitAR_total",
-                                  "logitAR_vol",
-                                  "logitAR_staff")]), ]
-  cat("Scenario:", sc_labels[sc],
-      "| rows after NA removal:", nrow(df), "\n")
+  df <- df[complete.cases(df[, c("logitAR_total", "logitAR_vol", "logitAR_staff")]), ]
+  cat("Scenario:", sc_labels[sc], "| rows after NA removal:", nrow(df), "\n")
 
   rf_models[[sc]] <- list()
 
   for (out in names(outcome_labels)) {
     rf <- suppressWarnings(
-      randomForest(
-        x          = df[, param_names],
-        y          = df[[out]],
-        ntree      = 500,
-        importance = TRUE
-      )
+      randomForest(x = df[, param_names], y = df[[out]], 
+                   ntree = 500, importance = TRUE)
     )
-    cat("  ", outcome_labels[out],
-        "| R2:", round(tail(rf$rsq, 1), 3), "\n")
+    cat("  ", outcome_labels[out], "| R2:", round(tail(rf$rsq, 1), 3), "\n")
 
     # Save importance
     imp <- importance(rf, type = 1)
@@ -260,9 +224,7 @@ for (sc in scenarios) {
   }
 }
 
-# ============================================================
 # Variable Importance Plot
-# ============================================================
 imp_df1 <- bind_rows(imp_list1)
 imp_df1$param_label <- factor(param_labels[imp_df1$parameter],
                                levels = rev(param_labels))
@@ -284,25 +246,18 @@ p1 <- ggplot(imp_df1,
                "Common Staff Room" = "#CC79A7"),
     name = "Scenario"
   ) +
-  labs(
-    title    = "Variable Importance per scenario",
-    subtitle = "Random Forest (permutation importance) | logit(AR)",
-    x        = "% increase in MSE",
-    y        = NULL
-  ) +
+  labs(title    = "Variable Importance per scenario",
+       subtitle = "Random Forest (permutation importance) | logit(AR)",
+       x = "% increase in MSE", y = NULL) +
   theme_bw(base_size = 12) +
   theme(legend.position  = "bottom",
         strip.background = element_rect(fill = "grey92"),
         strip.text       = element_text(face = "bold"))
 
 print(p1)
-ggsave("SA_approach1_per_scenario.png", p1,
-       width = 13, height = 6, dpi = 300)
-cat("Saved: SA_approach1_per_scenario.png\n")
+ggsave("SA_approach1_per_scenario.png", p1, width = 13, height = 6, dpi = 300)
 
-# ============================================================
 # R-Squared Summary Table
-# ============================================================
 cat("\n--- R-squared summary ---\n")
 
 r2_rows <- list()
@@ -325,15 +280,7 @@ r2_table <- bind_rows(r2_rows)
 print(r2_table)
 write.csv(r2_table, "SA_R2_summary.csv", row.names = FALSE)
 
-cat("\n=== RF done! Output files: ===\n")
-cat("  sensitivity_all_scenarios.rds\n")
-cat("  SA_approach1_per_scenario.png\n")
-cat("  SA_R2_summary.csv\n")
-cat("  rf_models\n")
-
-# ============================================================
 # Out-of-Bag Error (OOB Error) Summary
-# ============================================================
 cat("\n--- OOB Error summary ---\n")
 
 oob_rows <- list()
@@ -363,100 +310,7 @@ oob_table <- bind_rows(oob_rows)
 print(oob_table)
 write.csv(oob_table, "SA_OOB_summary.csv", row.names = FALSE)
 cat("Saved: SA_OOB_summary.csv\n")
-
 ```
-
-
-```{r rf_univariate, cache=TRUE, dependson="run_simulations"}
-# ============================================================
-# UNIVARIATE RF — separate model per parameter (theo thầy)
-# Dùng lại all_results từ chunk run_simulations
-# ============================================================
-
-imp_univariate <- list()
-
-for (sc in scenarios) {
-  df <- all_results[[sc]]
-  df <- df[complete.cases(
-    df[, c("logitAR_total","logitAR_vol","logitAR_staff")]), ]
-  cat("Scenario:", sc_labels[sc], "\n")
-
-  for (out in names(outcome_labels)) {
-    for (param in param_names) {
-
-      rf_uni <- suppressWarnings(
-        randomForest(
-          x     = df[, param, drop = FALSE],
-          y     = df[[out]],
-          ntree = 500
-        )
-      )
-
-      imp_univariate[[paste(sc, out, param, sep = "_")]] <- data.frame(
-        parameter = param,
-        R2        = round(tail(rf_uni$rsq, 1), 3),
-        OOB_MSE   = round(tail(rf_uni$mse, 1), 4),
-        scenario  = sc_labels[sc],
-        outcome   = outcome_labels[out],
-        stringsAsFactors = FALSE
-      )
-    }
-  }
-}
-
-imp_uni_df <- bind_rows(imp_univariate)
-imp_uni_df$parameter <- factor(imp_uni_df$parameter,
-                                levels = rev(param_names))
-imp_uni_df$scenario  <- factor(imp_uni_df$scenario,
-                                levels = sc_labels)
-imp_uni_df$outcome   <- factor(imp_uni_df$outcome,
-                                levels = c("AR Total",
-                                           "AR Volunteers",
-                                           "AR Staff"))
-
-# Plot
-p_uni <- ggplot(imp_uni_df,
-                aes(x = R2, y = parameter, fill = scenario)) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.65) +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
-  facet_wrap(~ outcome) +
-  scale_fill_manual(
-    values = c("Free Mixing"       = "#0072B2",
-               "Staff-Bridge"      = "#D55E00",
-               "Strict Cohorting"  = "#009E73",
-               "Common Staff Room" = "#CC79A7"),
-    name = "Scenario"
-  ) +
-  labs(
-    title    = "Variable Importance: Univariate RF",
-    subtitle = "Separate RF model per parameter | R² on logit(AR)",
-    x        = "R² (univariate RF)",
-    y        = NULL
-  ) +
-  theme_bw(base_size = 12) +
-  theme(legend.position  = "bottom",
-        strip.background = element_rect(fill = "grey92"),
-        strip.text       = element_text(face = "bold"))
-
-print(p_uni)
-ggsave("SA_univariate_RF.png", p_uni,
-       width = 13, height = 6, dpi = 300)
-
-# Summary table
-cat("\n=== Univariate RF R² Summary ===\n")
-imp_uni_df %>%
-  filter(outcome == "AR Total") %>%
-  arrange(scenario, desc(R2)) %>%
-  as.data.frame() %>%
-  print()
-
-write.csv(imp_uni_df, "SA_univariate_RF.csv", row.names = FALSE)
-cat("Saved: SA_univariate_RF.png\n")
-cat("Saved: SA_univariate_RF.csv\n")
-```
-
-
-
 ```{r prcc, dependson="run_simulations"}
 # =========================================================================
 # SENSITIVITY ANALYSIS - Partial Rank Correlation Coefficient
@@ -466,11 +320,8 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# =========================================================================
 # Compute PRCC — per scenario × per outcome
-# =========================================================================
 # pcc() with rank=TRUE → PRCC: estimate + 95% CI + p-value
-
 prcc_list <- list()
 
 for (sc in names(all_results)) {
@@ -482,13 +333,9 @@ for (sc in names(all_results)) {
   cat("Scenario:", sc_labels[sc], "| n =", nrow(df), "\n")
 
   for (out in names(outcome_labels)) {
-    prcc_res <- pcc(
-      X    = df[, param_names],
-      y    = df[[out]],
-      rank = TRUE,      # PRCC (rank-based) — robust to non-linearity
-      conf = 0.95, 
-      nboot = 100 
-    )
+    prcc_res <- pcc(X = df[, param_names], y = df[[out]],
+      rank = TRUE, # PRCC (rank-based) — robust to non-linearity
+      conf = 0.95, nboot = 100)
 
     # Extract results
     est <- prcc_res$PRCC
@@ -517,14 +364,10 @@ prcc_df <- bind_rows(prcc_list)
 prcc_df$param_label <- factor(param_labels[prcc_df$parameter],
                                levels = rev(param_labels))
 prcc_df$scenario    <- factor(prcc_df$scenario, levels = sc_labels)
-prcc_df$outcome     <- factor(prcc_df$outcome,
-                               levels = c("AR Total",
-                                          "AR Volunteers",
-                                          "AR Staff"))
+prcc_df$outcome     <- factor(prcc_df$outcome, 
+                              levels = c("AR Total", "AR Volunteers", "AR Staff"))
 
-# =========================================================================
 # Print Summary Table
-# =========================================================================
 cat("\n=== PRCC Summary (all scenarios) ===\n")
 
 prcc_summary <- prcc_df %>%
@@ -546,9 +389,7 @@ for (sc_name in unique(prcc_summary$scenario)) {
     print()
 }
 
-# =========================================================================
-# Plot PRCC per scenario (facet = outcome, color = scenario)
-# =========================================================================
+# Plot PRCC per scenario
 # Only show CI bar if significant
 prcc_df$alpha_val <- ifelse(prcc_df$significant, 1.0, 0.35)
 
@@ -578,12 +419,9 @@ p_prcc1 <- ggplot(prcc_df,
   breaks = seq(-0.2, 0.8, 0.2), 
   labels = c("-0.2", "0", "0.2", "0.4", "0.6", "0.8")
 ) +
-  labs(
-    title    = "PRCC: Partial Rank Correlation Coefficients",
-    subtitle = paste0("95% CI shown | Faded = non-significant (CI crosses 0)"),
-    x = "PRCC",
-    y = NULL
-  ) +
+  labs(title    = "PRCC: Partial Rank Correlation Coefficients",
+       subtitle = paste0("95% CI shown | Faded = non-significant (CI crosses 0)"),
+       x = "PRCC", y = NULL) +
   theme_bw(base_size = 12) +
   theme(
     legend.position  = "bottom",
@@ -594,15 +432,10 @@ p_prcc1 <- ggplot(prcc_df,
   )
 
 print(p_prcc1)
-ggsave("SA_PRCC_per_scenario.png", p_prcc1,
-       width = 13, height = 6, dpi = 300)
-cat("Saved: SA_PRCC_per_scenario.png\n")
+ggsave("SA_PRCC_per_scenario.png", p_prcc1, width = 13, height = 6, dpi = 300)
 
-# =========================================================================
 # Plot Focus on top variables — R0 and k only
-# =========================================================================
-prcc_top <- prcc_df %>%
-  filter(parameter %in% c("R0", "k"))
+prcc_top <- prcc_df %>% filter(parameter %in% c("R0", "k"))
 
 p_prcc_top <- ggplot(prcc_top,
                      aes(x = scenario, y = prcc,
@@ -619,15 +452,11 @@ p_prcc_top <- ggplot(prcc_top,
                "Common Staff Room" = "#CC79A7"),
     name = "Scenario"
   ) +
-  scale_alpha_manual(values = c("TRUE" = 1.0, "FALSE" = 0.3),
-                     guide = "none") +
-  scale_y_continuous(limits = c(-1, 1),
-                     breaks = seq(-1, 1, 0.25)) +
-  labs(
-    title    = "PRCC: Top Variables (R0 and k) by Scenario and Outcome",
-    subtitle = "Error bars = 95% CI | Faded = non-significant",
-    x = NULL, y = "PRCC"
-  ) +
+  scale_alpha_manual(values = c("TRUE" = 1.0, "FALSE" = 0.3), guide = "none") +
+  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.25)) +
+  labs(title    = "PRCC: Top Variables (R0 and k) by Scenario and Outcome",
+       subtitle = "Error bars = 95% CI | Faded = non-significant",
+       x = NULL, y = "PRCC") +
   theme_bw(base_size = 12) +
   theme(
     legend.position  = "bottom",
@@ -644,9 +473,7 @@ ggsave("SA_PRCC_top_variables.png", p_prcc_top,
        width = 10, height = 6, dpi = 300)
 cat("Saved: SA_PRCC_top_variables.png\n")
 
-# =========================================================================
 # Comparison table: RF vs PRCC
-# =========================================================================
 cat("\n=== RF vs PRCC Comparison (Free Mixing, AR Total) ===\n")
 cat("Checks if both methods agree on variable ranking\n\n")
 
@@ -660,11 +487,7 @@ prcc_sc1 <- prcc_df %>%
 cat("PRCC ranking:\n")
 print(prcc_sc1)
 
-cat("\nIf R0 and k are top-ranked in both RF and PRCC → findings are ROBUST\n")
-
-# =========================================================================
 # Save full PRCC table
-# =========================================================================
 write.csv(
   prcc_df %>%
     mutate(across(c(prcc, ci_low, ci_high), ~ round(.x, 4))) %>%
@@ -673,25 +496,14 @@ write.csv(
   "SA_PRCC_full_table.csv",
   row.names = FALSE
 )
-
-cat("\n=== PRCC Analysis Done! ===\n")
-cat("Output files:\n")
-cat("  SA_PRCC_per_scenario.png\n")
-cat("  SA_PRCC_top_variables.png\n")
-cat("  SA_PRCC_full_table.csv\n")
 ```
-
-
-
 ```{r}
 # =========================================================================
-# SENSITIVITY ANALYSIS: Partial Dependence Plots (PDP)
+# Sensitivity analysis: Partial Dependence Plots (PDP)
 # =========================================================================
 library(pdp)
 
-# -------------------------------------------------------------------------
 # Compute PDP for R0 and k — all 4 scenarios
-# -------------------------------------------------------------------------
 outcomes     <- c("total", "vol", "staff")
 outcome_labs <- c(total = "AR Total",
                   vol   = "AR Volunteers",
@@ -731,24 +543,16 @@ pdp_df$outcome  <- factor(pdp_df$outcome,
                                       "AR Staff"))
 
 y_range <- pdp_df %>%
-  filter(!(scenario == "Free Mixing" & outcome == "AR Staff")) %>%
   summarise(ymin = floor(min(yhat) * 10) / 10 - 0.2,
             ymax = ceiling(max(yhat) * 10) / 10 + 0.2)
 
 y_lo <- y_range$ymin  
 y_hi <- y_range$ymax
 
-# -------------------------------------------------------------------------
 # Plot PDP R0 
-# -------------------------------------------------------------------------
 pdp_R0 <- pdp_df %>% filter(variable == "R0")
 
-pdp_R0_plot <- pdp_R0 %>%
-  filter(!(scenario == "Free Mixing" & outcome == "AR Staff"))
-
-p_pdp_R0 <- ggplot(pdp_R0_plot,
-                   aes(x = x, y = yhat,
-                       color = scenario)) +
+p_pdp_R0 <- ggplot(pdp_R0, aes(x = x, y = yhat, color = scenario)) +
   geom_line(linewidth = 1.2) +
   geom_hline(yintercept = 0, linetype = "dashed",
              color = "grey60", linewidth = 0.5) +
@@ -778,19 +582,11 @@ p_pdp_R0 <- ggplot(pdp_R0_plot,
 
 print(p_pdp_R0)
 ggsave("SA_PDP_R0.png", p_pdp_R0, width = 12, height = 5, dpi = 300)
-cat("Saved: SA_PDP_R0.png\n")
 
-# -------------------------------------------------------------------------
 # Plot PDP k 
-# -------------------------------------------------------------------------
 pdp_k <- pdp_df %>% filter(variable == "k")
 
-pdp_k_plot <- pdp_k %>%
-  filter(!(scenario == "Free Mixing" & outcome == "AR Staff"))
-
-p_pdp_k <- ggplot(pdp_k_plot,
-                  aes(x = x, y = yhat,
-                      color = scenario)) +
+p_pdp_k <- ggplot(pdp_k, aes(x = x, y = yhat, color = scenario)) +
   geom_line(linewidth = 1.2) +
   geom_hline(yintercept = 0, linetype = "dashed",
              color = "grey60", linewidth = 0.5) +
@@ -820,11 +616,8 @@ p_pdp_k <- ggplot(pdp_k_plot,
 
 print(p_pdp_k)
 ggsave("SA_PDP_k.png", p_pdp_k, width = 12, height = 5, dpi = 300)
-cat("Saved: SA_PDP_k.png\n")
 
-# -------------------------------------------------------------------------
-# Plot PDP R0 × k interaction (Free Mixing only)
-# -------------------------------------------------------------------------
+# Plot PDP R0 and k (Scenario 1 Free Mixing only)
 pdp_2d <- partial(
   object   = rf_models[["sc1"]][["total"]],
   pred.var = c("R0", "k"),
@@ -839,7 +632,7 @@ p_pdp_2d <- autoplot(pdp_2d, contour = TRUE) +
     name   = "logit(AR)"
   ) +
   labs(
-    title    = "2D Partial Dependence: R0 × k Interaction",
+    title    = "2D Partial Dependence: R0 and k",
     subtitle = "Free Mixing | AR Total | Darker red = higher logit(AR)",
     x        = "Basic reproduction number (R0)",
     y        = "Infectiousness heterogeneity (k)"
@@ -848,26 +641,104 @@ p_pdp_2d <- autoplot(pdp_2d, contour = TRUE) +
   theme(plot.subtitle = element_text(color = "grey40", size = 9))
 
 print(p_pdp_2d)
-ggsave("SA_PDP_R0xk_2D.png", p_pdp_2d,
-       width = 7, height = 5, dpi = 300)
-cat("Saved: SA_PDP_R0xk_2D.png\n")
-
-cat("\n=== PDP Done! ===\n")
-cat("  SA_PDP_R0.png\n")
-cat("  SA_PDP_k.png\n")
-cat("  SA_PDP_R0xk_2D.png\n")
-
+ggsave("SA_PDP_R0xk_2D.png", p_pdp_2d, width = 7, height = 5, dpi = 300)
 ```
-
-
-
 ```{r}
+# =========================================================================
+# Correlation Check — Check multicollinearity between parameters
+# =========================================================================
+cat("\n--- Correlation check (LHS parameters) ---\n")
 
+# Set scenario 1 (Free Mixing) as representative
+df_cor <- all_results[["sc1"]][, param_names]
 
+# Spearman correlation matrix
+cor_matrix <- round(cor(df_cor, method = "spearman"), 3)
+cat("Spearman correlation matrix:\n")
+print(cor_matrix)
 
+# Visualize correlation matrix
+library(ggplot2)
+library(reshape2)
+
+cor_melt <- melt(cor_matrix)
+colnames(cor_melt) <- c("Var1", "Var2", "correlation")
+
+p_cor <- ggplot(cor_melt,
+                aes(x = Var1, y = Var2,
+                    fill = correlation)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(correlation, 2)),
+            size = 3.5, color = "black") +
+  scale_fill_gradient2(
+    low      = "#2C7BB6",
+    mid      = "white",
+    high     = "#D7191C",
+    midpoint = 0,
+    limits   = c(-1, 1),
+    name     = "Spearman\nCorrelation"
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(
+    title    = "Pairwise Spearman Correlation of LHS Parameters",
+    subtitle = "Scenario 1 Free Mixing",
+    x = NULL, y = NULL
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid    = element_blank(),
+    plot.subtitle = element_text(color = "grey40", size = 9)
+  )
+
+print(p_cor)
+ggsave("SA_LHS_correlation.png", p_cor,
+       width = 7, height = 6, dpi = 300)
+cat("Saved: SA_LHS_correlation.png\n")
+
+# Summary: max absolute correlation (excluding diagonal)
+diag(cor_matrix) <- NA
+max_cor <- max(abs(cor_matrix), na.rm = TRUE)
+cat("\nMax |correlation| between parameters:", round(max_cor, 3), "\n")
+if (max_cor < 0.3) {
+  cat("→ All correlations near 0 ✅\n")
+  cat("  LHS sampling ensures parameter independence\n")
+  cat("  Multicollinearity is NOT a concern\n")
+} else {
+  cat("→ Some correlation detected ⚠️\n")
+  cat("  Consider this when interpreting RF importance\n")
+}
 ```
+```{r}
+# =========================================================================
+# Constraint Check: R0 vs ct.rates
+# =========================================================================
+df_check <- all_results[["sc1"]]
 
+# Calculate Q_actual
+df_check$Q_actual <- df_check$R0 /
+  (df_check$ct.rates * average_mod)
 
+# Correlation
+cor_val <- round(cor(df_check$ct.rates,
+                     df_check$Q_actual,
+                     method = "spearman"), 3)
+cat("Correlation Contact rates vs Q:", cor_val, "\n")
 
+# Plot 
+p_constraint <- ggplot(df_check,
+  aes(x = ct.rates, y = Q_actual)) +
+  geom_point(alpha = 0.4, color = "#2C7BB6") +
+  labs(
+    title = "Constraint check: Contact rates vs Q",
+    subtitle = paste0("Spearman r = ", cor_val),
+    x = "Contact rates",
+    y = "Transmission probability Q"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(plot.subtitle = element_text(color = "grey40", size = 9))
+
+print(p_constraint)
+ggsave("SA_constraint_check.png", p_constraint, width = 7, height = 5, dpi = 300)
+```
 
 
